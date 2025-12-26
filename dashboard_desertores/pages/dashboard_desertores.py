@@ -26,6 +26,7 @@ CONTENT_STYLE = {
 layout = dbc.Container([
 
     dcc.Store(id='store-datos-competencia'),
+    dcc.Store(id='store-datos-permanencia'),
 
     dbc.Row([
         # --- COLUMNA IZQUIERDA: PANEL DE CONTROL (Filtros) ---
@@ -127,9 +128,15 @@ layout = dbc.Container([
                 # Comparativa de Deserción Real
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader("Tasa de Deserción Anual (%)", className="fw-bold"),
+                        dbc.CardHeader("Permanencia N → N+1 (%)", className="fw-bold"),
                         dbc.CardBody([
-                            dcc.Graph(id='grafico-tasa-desercion', style={"height": "350px"})
+                            dcc.Loading(
+                                type="circle",
+                                children=dcc.Graph(
+                                    id='grafico-permanencia-n1',
+                                    style={"height": "350px"}
+                                )
+                            )
                         ])
                     ], className="shadow-sm mb-4")
                 ], width=6),
@@ -186,32 +193,82 @@ def inicializar_datos_dash(_):
     df_inicial = get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025)
     return df_inicial.to_dict('records')
 
-# 2. CALLBACK DEL GRÁFICO (Controlado por Botón)
+@callback(
+    Output('store-datos-permanencia', 'data'),
+    Input('url', 'pathname'), # Se dispara al cargar la página
+)
+def inicializar_permanencia_dash(_):
+    # Cargamos el Top 10 histórico de permanencia (2007-2025)
+    # Usamos la query optimizada que no restringe cohorte == periodo
+    df_inicial = get_permanencia_n_n1_competencia(
+        anio_min=2007, 
+        anio_max=2024, # Máximo 2024 para poder evaluar el retorno en 2025
+        jornada="Todas"
+    )
+    return df_inicial.to_dict('records')
+
 @callback(
     Output('grafico-ingresos-competencia', 'figure'),
     Input('boton-aplicar-filtros', 'n_clicks'),
-    [State('store-datos-competencia', 'data'),
-     State('slider-años-desertores', 'value'),
+    [State('slider-años-desertores', 'value'),
      State('slider-top-n-desertores', 'value'),
      State('radio-jornada-desertores', 'value'),
      State('selector-instituciones-competencia', 'value')],
-    prevent_initial_call=False
+    prevent_initial_call=True  # IMPORTANTE: Evita la carga al inicio
 )
-def update_dashboard_competencia(n_clicks, data_cache, rango_anios, top_n, jornada, inst_manuales):
-    # Si es la carga inicial (n_clicks es None o 0)
-    if not n_clicks:
-        df = pd.DataFrame(data_cache)
-    else:
-        # Solo consultamos la DB si el usuario presionó el botón para cambiar parámetros
-        df = get_ingresos_competencia_parametrizado(
-            top_n=top_n, 
-            anio_min=rango_anios[0], 
-            anio_max=rango_anios[1],
-            jornada=jornada
-        )
+def update_ingresos_on_click(n_clicks, rango_anios, top_n, jornada, inst_manuales):
+    if n_clicks is None:
+        return go.Figure()
+        
+    # Consultamos la DB solo al hacer click
+    df = get_ingresos_competencia_parametrizado(
+        top_n=top_n, 
+        anio_min=rango_anios[0], 
+        anio_max=rango_anios[1],
+        jornada=jornada
+    )
     
-    # Filtrado manual adicional por Dropdown (Pandas es instantáneo aquí)
+    # Filtrado manual en Python (opcional si la query ya lo hace)
     if inst_manuales:
-        df = df[(df['nomb_inst'].isin(inst_manuales)) | (df['cod_inst'] == 104)]
+        df = df[(df['nomb_inst'].isin(inst_manuales)) | (df['nomb_inst'].str.contains("ESCUELA DE CONTADORES", case=False))]
         
     return create_ingresos_line_chart(df)
+
+@callback(
+    Output('grafico-permanencia-n1', 'figure'),
+    Input('boton-aplicar-filtros', 'n_clicks'),
+    [State('slider-años-desertores', 'value'),
+     State('slider-top-n-desertores', 'value'),
+     State('selector-instituciones-competencia', 'value'),
+     State('radio-jornada-desertores', 'value')],
+    prevent_initial_call=True
+)
+def update_permanencia_on_click(n_clicks, rango, top_n, inst_manuales, jornada):
+    if n_clicks is None:
+        return go.Figure()
+
+    # 1. Obtener datos crudos
+    df_full = get_permanencia_n_n1_competencia(rango[0], rango[1], jornada)
+    
+    if df_full.empty:
+        return go.Figure().update_layout(title="Sin datos para la selección")
+
+    # 2. CALCULAR LA TASA (Aquí faltaba asegurar que la columna exista)
+    df_full['tasa_permanencia_pct'] = (df_full['retenidos_n1'] * 100.0 / df_full['base_n'].replace(0, pd.NA)).fillna(0).round(2)
+
+    # 3. Lógica de Filtrado en Python
+    # Normalizamos a Mayúsculas para evitar errores de coincidencia
+    df_full['nomb_inst_upper'] = df_full['nomb_inst'].str.upper()
+    mask_ecas = df_full['nomb_inst_upper'].str.contains("ESCUELA DE CONTADORES|ECAS", na=False)
+
+    if inst_manuales:
+        # Filtrar por selección + ECAS
+        df_final = df_full[df_full['nomb_inst'].isin(inst_manuales) | mask_ecas].copy()
+    else:
+        # Top N dinámico
+        df_competencia = df_full[~mask_ecas]
+        ranking = df_competencia.groupby('nomb_inst')['base_n'].mean().sort_values(ascending=False).head(top_n).index.tolist()
+        df_final = df_full[df_full['nomb_inst'].isin(ranking) | mask_ecas].copy()
+
+    # 4. Generar gráfico
+    return create_permanencia_line_chart(df_final)

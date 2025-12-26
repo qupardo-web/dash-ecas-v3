@@ -1,6 +1,7 @@
 from conn_db import get_db_engine
 from sqlalchemy import text
 import pandas as pd
+from typing import Optional, List
 
 db_engine = get_db_engine()
 
@@ -54,31 +55,26 @@ def get_mruns_per_institucion(
 
 def get_nombres_top_competencia(top_n=10):
     """
-    Trae los nombres únicos de las instituciones que están en el Top N 
-    sumando ambas jornadas (Diurna y Vespertina).
+    Trae los nombres de instituciones top basándose en volumen de registros 
+    de los últimos 5 años (mucho más rápido que contar MRUNs históricos).
     """
     sql_query = text("""
-    WITH base AS (
-        SELECT 
-            cod_inst, nomb_inst, anio_ing_carr_ori,
-            COUNT(DISTINCT mrun) AS ingresos
-        FROM vista_matricula_unificada
-        WHERE region_sede = 'Metropolitana'
-          AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
-          AND (cod_inst = 104 OR tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica'))
-        GROUP BY cod_inst, nomb_inst, anio_ing_carr_ori
-    ),
-    ranking AS (
-        SELECT nomb_inst, AVG(CAST(ingresos AS FLOAT)) as prom
-        FROM base
-        GROUP BY nomb_inst
-    )
-    SELECT TOP (:top_n) nomb_inst FROM ranking ORDER BY prom DESC
+    SELECT TOP (:top_n) 
+        nomb_inst
+    FROM vista_matricula_unificada
+    WHERE anio_ing_carr_ori >= (YEAR(GETDATE()) - 5) -- Solo últimos 5 años para velocidad
+      AND region_sede = 'Metropolitana'
+      AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
+      AND tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica')
+      AND nomb_inst NOT LIKE '%ESCUELA DE CONTADORES%' -- Excluimos ECAS del ranking para que no use un cupo
+    GROUP BY nomb_inst
+    ORDER BY COUNT(*) DESC -- Usamos COUNT(*) que es infinitamente más rápido que COUNT(DISTINCT mrun)
     """)
     
-    df = pd.read_sql(sql_query, db_engine, params={"top_n": top_n})
+    with db_engine.connect() as conn:
+        df = pd.read_sql(sql_query, conn, params={"top_n": top_n})
     
-    return df['nomb_inst'].unique().tolist()
+    return df['nomb_inst'].tolist()
 
 def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025, jornada=None):
     # 1. Definimos los parámetros base que SIEMPRE están presentes
@@ -129,5 +125,67 @@ def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=202
     # 6. Ejecución
     with db_engine.connect() as conn:
         df = pd.read_sql(text(sql_str), conn, params=params)
+    
+    return df
+
+def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: Optional[str] = None) -> pd.DataFrame:
+    params = {
+        "anio_min": anio_min,
+        "anio_max": anio_max,
+        "anio_max_ext": anio_max + 1
+    }
+
+    # Filtro de jornada dinámico
+    jornada_sql = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
+    if jornada_sql: params["jornada"] = jornada
+
+    sql = f"""
+    WITH base_filtrada AS (
+        -- PASO 1: Universo total filtrado por los criterios de mercado
+        SELECT 
+            mrun, 
+            nomb_inst, 
+            CAST(anio_ing_carr_ori AS INT) AS cohorte, 
+            CAST(cat_periodo AS INT) AS periodo
+        FROM vista_matricula_unificada
+        WHERE anio_ing_carr_ori BETWEEN :anio_min AND :anio_max
+          AND region_sede = 'Metropolitana'
+          AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
+          AND mrun IS NOT NULL
+          AND tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación CFT', 'Centros de Formación Técnica')
+          {jornada_sql}
+    ),
+    universo_cohortes AS (
+        -- PASO 2: Identificar a los alumnos únicos de cada cohorte/institución (T1)
+        SELECT DISTINCT mrun, nomb_inst, cohorte
+        FROM base_filtrada
+    ),
+    retencion_n1 AS (
+        -- PASO 3: Identificar matrículas en el año N+1 (T2)
+        -- Buscamos directamente en la vista por periodo para máxima velocidad
+        SELECT DISTINCT mrun, nomb_inst, CAST(cat_periodo AS INT) AS periodo_retencion
+        FROM vista_matricula_unificada
+        WHERE cat_periodo BETWEEN :anio_min + 1 AND :anio_max_ext
+    )
+    -- PASO 4: Cruce final (Lógica N -> N+1)
+    SELECT 
+        u.nomb_inst, 
+        u.cohorte, 
+        COUNT(DISTINCT u.mrun) AS base_n,
+        COUNT(DISTINCT r.mrun) AS retenidos_n1
+    FROM universo_cohortes u
+    LEFT JOIN retencion_n1 r 
+        ON u.mrun = r.mrun 
+        AND u.nomb_inst = r.nomb_inst 
+        AND r.periodo_retencion = u.cohorte + 1
+    GROUP BY u.nomb_inst, u.cohorte
+    ORDER BY u.cohorte ASC, base_n DESC;
+    """
+    
+    with db_engine.connect() as conn:
+        df = pd.read_sql(text(sql), conn, params=params)
+    
+    # El cálculo de la tasa se hace en Python para no sobrecargar SQL
+    df['tasa_permanencia_pct'] = (df['retenidos_n1'] * 100.0 / df['base_n'].replace(0, pd.NA)).fillna(0).round(2)
     
     return df
