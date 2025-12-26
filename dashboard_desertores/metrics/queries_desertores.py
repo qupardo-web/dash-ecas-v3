@@ -52,74 +52,82 @@ def get_mruns_per_institucion(
 
 #print(get_mruns_per_institucion(cohorte_n="2008", nomb_carrera= "%AUDITOR%", top_n=5))
 
-def get_ingresos_competencia_parametrizado(
-    top_n: int = 10, 
-    anio_min: int = 2007,
-    anio_max: int = 2025
-):
+def get_nombres_top_competencia(top_n=10):
     """
-    Versión optimizada que acepta parámetros dinámicos para el Dashboard.
+    Trae los nombres únicos de las instituciones que están en el Top N 
+    sumando ambas jornadas (Diurna y Vespertina).
     """
-
     sql_query = text("""
     WITH base AS (
-        SELECT
-            v.anio_ing_carr_ori AS cohorte,
-            v.cod_inst,
-            v.nomb_inst,
-            COUNT(DISTINCT v.mrun) AS total_ingresos
-        FROM vista_matricula_unificada v
-        WHERE v.mrun IS NOT NULL
-          AND v.anio_ing_carr_ori BETWEEN :anio_min AND :anio_max
-          AND (v.nomb_carrera LIKE 'AUDITOR%' OR v.nomb_carrera LIKE 'CONTA%')
-          AND v.region_sede = 'Metropolitana'
-          AND (
-                v.cod_inst = 104
-                OR v.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica')
-          )
-        GROUP BY
-            v.anio_ing_carr_ori,
-            v.cod_inst,
-            v.nomb_inst
+        SELECT 
+            cod_inst, nomb_inst, anio_ing_carr_ori,
+            COUNT(DISTINCT mrun) AS ingresos
+        FROM vista_matricula_unificada
+        WHERE region_sede = 'Metropolitana'
+          AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
+          AND (cod_inst = 104 OR tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica'))
+        GROUP BY cod_inst, nomb_inst, anio_ing_carr_ori
     ),
-
     ranking AS (
-        SELECT
-            cod_inst,
-            nomb_inst,
-            AVG(total_ingresos) AS promedio_ingresos
+        SELECT nomb_inst, AVG(CAST(ingresos AS FLOAT)) as prom
         FROM base
-        GROUP BY cod_inst, nomb_inst
-    ),
-
-    top_seleccionado AS (
-        SELECT TOP (:top_n)
-            cod_inst
-        FROM ranking
-        ORDER BY promedio_ingresos DESC
+        GROUP BY nomb_inst
     )
-
-    SELECT
-        b.cohorte,
-        b.cod_inst,
-        b.nomb_inst,
-        b.total_ingresos
-    FROM base b
-    JOIN top_seleccionado t
-        ON b.cod_inst = t.cod_inst
-    ORDER BY
-        b.cohorte,
-        b.total_ingresos DESC;
+    SELECT TOP (:top_n) nomb_inst FROM ranking ORDER BY prom DESC
     """)
+    
+    df = pd.read_sql(sql_query, db_engine, params={"top_n": top_n})
+    
+    return df['nomb_inst'].unique().tolist()
 
+def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025, jornada=None):
+    # 1. Definimos los parámetros base que SIEMPRE están presentes
     params = {
         "top_n": top_n,
         "anio_min": anio_min,
         "anio_max": anio_max
     }
 
-    df = pd.read_sql(sql_query, db_engine, params=params)
+    # 2. Construcción del string SQL
+    # Iniciamos con la parte fija de la consulta
+    sql_str = """
+    WITH data_filtrada AS (
+        SELECT anio_ing_carr_ori AS cohorte, cod_inst, nomb_inst, mrun
+        FROM vista_matricula_unificada
+        WHERE anio_ing_carr_ori BETWEEN :anio_min AND :anio_max
+          AND region_sede = 'Metropolitana'
+          AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
+          AND (cod_inst = 104 OR tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica'))
+          AND mrun IS NOT NULL
+    """
+    
+    # 3. Lógica Dinámica: Solo agregamos el marcador si hay jornada
+    if jornada and jornada != "Todas":
+        sql_str += " AND jornada = :jornada "
+        params["jornada"] = jornada  # Agregamos al diccionario solo si existe en el SQL
+
+    # 4. Cerramos el resto de la consulta
+    sql_str += """
+    ),
+    base AS (
+        SELECT cohorte, cod_inst, nomb_inst, COUNT(DISTINCT mrun) AS total_ingresos
+        FROM data_filtrada
+        GROUP BY cohorte, cod_inst, nomb_inst
+    ),
+    ranking AS (
+        SELECT TOP (:top_n) cod_inst, AVG(CAST(total_ingresos AS FLOAT)) AS prom
+        FROM base GROUP BY cod_inst ORDER BY prom DESC
+    )
+    SELECT b.cohorte, b.cod_inst, b.nomb_inst, b.total_ingresos 
+    FROM base b 
+    INNER JOIN ranking r ON b.cod_inst = r.cod_inst
+    ORDER BY b.cohorte, b.total_ingresos DESC;
+    """
+
+    # 5. IMPORTANTE: Convertir el string final a objeto text de SQLAlchemy
+
+    # 6. Ejecución
+    with db_engine.connect() as conn:
+        df = pd.read_sql(text(sql_str), conn, params=params)
     
     return df
-
-print(get_ingresos_competencia_parametrizado(top_n=5, anio_min=2007, anio_max=2025))
