@@ -5,195 +5,137 @@ from typing import Optional, List
 
 db_engine = get_db_engine()
 
-def get_mruns_per_institucion(
-    cohorte_n: int | None = None,
-    nomb_carrera: str | None = None,
-    nomb_inst: str | None = None,
-    jornada: str | None = None,
-    top_n: int | None = None
-):  
-
-    #Clausula de top (limitación de busquedas)
-    sql_select = "SELECT TOP (:top_n) " if top_n else "SELECT "
-
-    sql_base = f"""
-    {sql_select} 
-        nomb_carrera,
-        nomb_inst,
-        COUNT(DISTINCT mrun) AS total_mruns
-    FROM vista_matricula_unificada
-    WHERE nivel_global = 'Pregrado'
-    AND tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica')
-    """
-    
-    params = {"top_n": top_n} if top_n else {}
-    
-
-    if nomb_inst:
-        sql_base += " AND nomb_inst LIKE :inst"
-        params["inst"] = nomb_inst
-
-    if nomb_carrera:
-        sql_base += " AND nomb_carrera LIKE :nomb_carrera"
-        params["nomb_carrera"] = nomb_carrera
-        
-    if cohorte_n: 
-        sql_base += " AND anio_ing_carr_ori = :anio"
-        params["anio"] = cohorte_n
-    
-    if jornada:
-        sql_base += " AND jornada = :jornada"
-        params["jornada"] = jornada
-
-    sql_base += " GROUP BY nomb_inst, nomb_carrera ORDER BY total_mruns DESC"
-
-    df_mruns = pd.read_sql_query(text(sql_base), db_engine, params=params)
-        
-    return df_mruns
-
-#print(get_mruns_per_institucion(cohorte_n="2008", nomb_carrera= "%AUDITOR%", top_n=5))
-
-def get_nombres_top_competencia(top_n=10):
-    """
-    Trae los nombres de instituciones top basándose en volumen de registros 
-    de los últimos 5 años (mucho más rápido que contar MRUNs históricos).
-    """
-    sql_query = text("""
-    SELECT TOP (:top_n) 
-        nomb_inst
-    FROM vista_matricula_unificada
-    WHERE anio_ing_carr_ori >= (YEAR(GETDATE()) - 5) -- Solo últimos 5 años para velocidad
-      AND region_sede = 'Metropolitana'
-      AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
-      AND tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica')
-      AND nomb_inst NOT LIKE '%ESCUELA DE CONTADORES%' -- Excluimos ECAS del ranking para que no use un cupo
-    GROUP BY nomb_inst
-    ORDER BY COUNT(*) DESC -- Usamos COUNT(*) que es infinitamente más rápido que COUNT(DISTINCT mrun)
-    """)
-    
-    with db_engine.connect() as conn:
-        df = pd.read_sql(sql_query, conn, params={"top_n": top_n})
-    
-    return df['nomb_inst'].tolist()
-
 def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025, jornada=None):
-    # 1. Definimos los parámetros base que SIEMPRE están presentes
-    params = {
-        "top_n": top_n,
-        "anio_min": anio_min,
-        "anio_max": anio_max
-    }
-
-    # 2. Construcción del string SQL
-    # Iniciamos con la parte fija de la consulta
-    sql_str = """
-    WITH data_filtrada AS (
-        SELECT anio_ing_carr_ori AS cohorte, cod_inst, nomb_inst, mrun
-        FROM vista_matricula_unificada
-        WHERE anio_ing_carr_ori BETWEEN :anio_min AND :anio_max
-          AND region_sede = 'Metropolitana'
-          AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
-          AND (cod_inst = 104 OR tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica'))
-          AND mrun IS NOT NULL
-    """
+    params = {"top_n": top_n, "anio_min": anio_min, "anio_max": anio_max}
     
-    # 3. Lógica Dinámica: Solo agregamos el marcador si hay jornada
-    if jornada and jornada != "Todas":
-        sql_str += " AND jornada = :jornada "
-        params["jornada"] = jornada  # Agregamos al diccionario solo si existe en el SQL
+    filtro_jornada = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
+    if filtro_jornada: params["jornada"] = jornada
 
-    # 4. Cerramos el resto de la consulta
-    sql_str += """
-    ),
-    base AS (
+    # Usamos la tabla física directamente (mucho más rápido que la vista)
+    sql_str = f"""
+    WITH base AS (
         SELECT cohorte, cod_inst, nomb_inst, COUNT(DISTINCT mrun) AS total_ingresos
-        FROM data_filtrada
+        FROM tabla_dashboard_permanencia
+        WHERE cohorte BETWEEN :anio_min AND :anio_max
+        {filtro_jornada}
         GROUP BY cohorte, cod_inst, nomb_inst
     ),
     ranking AS (
-        SELECT TOP (:top_n) cod_inst, AVG(CAST(total_ingresos AS FLOAT)) AS prom
-        FROM base GROUP BY cod_inst ORDER BY prom DESC
+        SELECT TOP (:top_n) cod_inst
+        FROM base
+        WHERE cod_inst <> 104 -- Excluimos ECAS del ranking
+        GROUP BY cod_inst
+        ORDER BY AVG(CAST(total_ingresos AS FLOAT)) DESC
     )
     SELECT b.cohorte, b.cod_inst, b.nomb_inst, b.total_ingresos 
     FROM base b 
     INNER JOIN ranking r ON b.cod_inst = r.cod_inst
+    OR b.cod_inst = 104 -- Siempre incluimos ECAS
     ORDER BY b.cohorte, b.total_ingresos DESC;
     """
 
-    # 5. IMPORTANTE: Convertir el string final a objeto text de SQLAlchemy
-
-    # 6. Ejecución
     with db_engine.connect() as conn:
-        df = pd.read_sql(text(sql_str), conn, params=params)
-    
-    return df
+        return pd.read_sql(text(sql_str), conn, params=params)
+
+#print(get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025))
 
 def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: Optional[str] = None) -> pd.DataFrame:
-
-    anio_techo_calculo = 2024 
-    anio_max_ajustado = min(anio_max, anio_techo_calculo)
+    anio_max_ajustado = min(anio_max, 2024)
     
-    if anio_min > anio_max_ajustado:
-        return pd.DataFrame(columns=['nomb_inst', 'cohorte', 'base_n', 'retenidos_n1', 'tasa_permanencia_pct'])
-
     params = {
         "anio_min": anio_min,
         "anio_max": anio_max_ajustado,
         "anio_max_ext": anio_max_ajustado + 1
     }
 
-    # Filtro de jornada dinámico
-    jornada_sql = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
-    if jornada_sql: params["jornada"] = jornada
+    # El filtro de jornada SOLO debe aplicar al universo inicial (Cohorte)
+    filtro_jornada_cohorte = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
+    if filtro_jornada_cohorte: params["jornada"] = jornada
 
     sql = f"""
-    WITH base_filtrada AS (
-        -- PASO 1: Universo de cohortes limitado hasta 2024
-        SELECT 
-            mrun, 
-            nomb_inst, 
-            CAST(anio_ing_carr_ori AS INT) AS cohorte, 
-            CAST(cat_periodo AS INT) AS periodo
-        FROM vista_matricula_unificada
-        WHERE anio_ing_carr_ori BETWEEN :anio_min AND :anio_max
-          AND region_sede = 'Metropolitana'
-          AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
-          AND mrun IS NOT NULL
-          AND tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica')
-          {jornada_sql}
-    ),
-    universo_cohortes AS (
-        -- PASO 2: Estudiantes únicos por cohorte e institución
-        SELECT DISTINCT mrun, nomb_inst, cohorte
-        FROM base_filtrada
+    WITH universo_cohortes AS (
+        -- Definimos quiénes entraron en la cohorte X con la jornada seleccionada
+        SELECT DISTINCT mrun, cod_inst, nomb_inst, cohorte
+        FROM tabla_dashboard_permanencia
+        WHERE cohorte BETWEEN :anio_min AND :anio_max
+        {filtro_jornada_cohorte}
     ),
     retencion_n1 AS (
-        -- PASO 3: Buscamos matrícula en el año siguiente (N+1)
-        SELECT DISTINCT mrun, nomb_inst, CAST(cat_periodo AS INT) AS periodo_retencion
-        FROM vista_matricula_unificada
-        WHERE cat_periodo BETWEEN :anio_min + 1 AND :anio_max_ext
+        -- Buscamos si el alumno está matriculado el año siguiente en la institución
+        -- NOTA: AQUÍ NO FILTRAMOS POR JORNADA para capturar cambios de jornada
+        SELECT DISTINCT mrun, cod_inst, periodo
+        FROM tabla_dashboard_permanencia
+        WHERE periodo BETWEEN :anio_min + 1 AND :anio_max_ext
     )
-    -- PASO 4: Cruce final con Lógica N -> N+1
     SELECT 
-        u.nomb_inst, 
-        u.cohorte, 
+        u.nomb_inst, u.cohorte, 
         COUNT(DISTINCT u.mrun) AS base_n,
         COUNT(DISTINCT r.mrun) AS retenidos_n1
     FROM universo_cohortes u
     LEFT JOIN retencion_n1 r 
         ON u.mrun = r.mrun 
-        AND u.nomb_inst = r.nomb_inst 
-        AND r.periodo_retencion = u.cohorte + 1
-    GROUP BY u.nomb_inst, u.cohorte
-    ORDER BY u.cohorte ASC, base_n DESC;
+        AND u.cod_inst = r.cod_inst 
+        AND r.periodo = u.cohorte + 1
+    GROUP BY u.nomb_inst, u.cohorte;
     """
     
     with db_engine.connect() as conn:
         df = pd.read_sql(text(sql), conn, params=params)
     
-    # Cálculo de tasa en Pandas (evita divisiones por cero)
-    df['tasa_permanencia_pct'] = (
-        df['retenidos_n1'] * 100.0 / df['base_n'].replace(0, pd.NA)
-    ).fillna(0).round(2)
+    df['tasa_permanencia_pct'] = (df['retenidos_n1'] * 100.0 / df['base_n'].replace(0, pd.NA)).fillna(0).round(2)
+    
+    return df
+
+#Cambios de jornada evaluados por cohorte
+def get_distribucion_cambio_jornada_ecas(anio_min, anio_max, jornada_filtro=None):
+    params = {
+        "anio_min": anio_min, 
+        "anio_max": min(anio_max, 2024),
+    }
+    
+    # Filtro opcional por si el usuario seleccionó una jornada específica en el dashboard
+    filtro_sql = ""
+    if jornada_filtro and jornada_filtro != "Todas":
+        filtro_sql = "AND t1.jornada = :jornada_filtro"
+        params["jornada_filtro"] = jornada_filtro
+
+    sql = f"""
+    WITH cohorte_inicial AS (
+        -- Estudiantes ECAS en su año de ingreso
+        SELECT mrun, jornada AS jornada_origen, cohorte
+        FROM tabla_dashboard_permanencia
+        WHERE cod_inst = 104
+          AND cohorte BETWEEN :anio_min AND :anio_max
+          AND cohorte = periodo -- Aseguramos que es su registro de ingreso
+    ),
+    seguimiento_n1 AS (
+        -- Buscamos su jornada en el año siguiente
+        SELECT mrun, jornada AS jornada_destino, periodo
+        FROM tabla_dashboard_permanencia
+        WHERE cod_inst = 104
+          AND periodo BETWEEN :anio_min + 1 AND :anio_max + 1
+    )
+    SELECT 
+        t1.jornada_origen,
+        t1.cohorte,
+        CASE 
+            WHEN t2.jornada_destino IS NULL THEN 'Deserción'
+            WHEN t1.jornada_origen = t2.jornada_destino THEN 'Mantiene Jornada'
+            ELSE 'Cambio de Jornada'
+        END AS estado_retencion,
+        COUNT(DISTINCT t1.mrun) AS cantidad_alumnos
+    FROM cohorte_inicial t1
+    LEFT JOIN seguimiento_n1 t2 
+        ON t1.mrun = t2.mrun 
+        AND t2.periodo = t1.cohorte + 1
+    WHERE 1=1 {filtro_sql}
+    GROUP BY t1.jornada_origen, t1.cohorte, 
+             CASE 
+                WHEN t2.jornada_destino IS NULL THEN 'Deserción'
+                WHEN t1.jornada_origen = t2.jornada_destino THEN 'Mantiene Jornada'
+                ELSE 'Cambio de Jornada'
+             END
+    """
+    df = pd.read_sql(text(sql), db_engine, params=params)
     
     return df

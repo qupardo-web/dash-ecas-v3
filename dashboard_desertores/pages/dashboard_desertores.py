@@ -150,9 +150,21 @@ layout = dbc.Container([
                 # Distribución de la Selección
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader("Composición por Jornada (Selección)", className="fw-bold"),
+                        dbc.CardHeader("Permanencia por jornada (ECAS)", className="fw-bold"),
                         dbc.CardBody([
-                            dcc.Graph(id='grafico-pie-jornada', style={"height": "350px"})
+                            dcc.Loading(
+                                type="circle",
+                                children=dcc.Graph(
+                                    id='grafico-permanencia-jornada',
+                                    style={
+                                        "maxHeight": "350px", 
+                                        "width": "100%",
+                                        "overflowY": "auto", 
+                                        "overflowX": "hidden",  # Corta cualquier desborde visual
+                                        "padding-bottom": "20px" # Espacio de seguridad
+                                    }
+                                )
+                            )
                         ])
                     ], className="shadow-sm mb-4")
                 ], width=6)
@@ -180,10 +192,23 @@ layout = dbc.Container([
 @callback(
     [Output('selector-instituciones-competencia', 'options'),
      Output('selector-instituciones-competencia', 'value')],
-    Input('url', 'pathname') # Se ejecuta al cargar la página
+    [Input('radio-jornada-desertores', 'value'),
+     Input('slider-top-n-desertores', 'value')]
 )
-def poblar_selector_competencia(_):
-    nombres_top = get_nombres_top_competencia(top_n=10)
+def actualizar_opciones_selector(jornada, top_n):
+
+    df_ranking = get_ingresos_competencia_parametrizado(
+        top_n=top_n, 
+        anio_min=2007, # Ranking basado en datos recientes (últimos 5 años)
+        anio_max=2025, 
+        jornada=jornada
+    )
+    
+    if df_ranking.empty:
+        return [], []
+
+    nombres_top = [n for n in df_ranking['nomb_inst'].unique() 
+                   if "ESCUELA DE CONTADORES" not in n.upper()]
     
     options = [{'label': nombre, 'value': nombre} for nombre in nombres_top]
     
@@ -192,6 +217,7 @@ def poblar_selector_competencia(_):
 @callback(
     [Output('grafico-ingresos-competencia', 'figure'),
      Output('grafico-permanencia-n1', 'figure')],
+     Output('grafico-permanencia-jornada', 'figure'),
     Input('boton-aplicar-filtros', 'n_clicks'),
     [State('slider-años-desertores', 'value'),
      State('slider-top-n-desertores', 'value'),
@@ -205,6 +231,7 @@ def update_full_dashboard(n_clicks, rango, top_n, jornada, inst_manuales):
 
     df_ingresos_raw = get_ingresos_competencia_parametrizado(top_n, rango[0], rango[1], jornada)
     df_perm_raw = get_permanencia_n_n1_competencia(rango[0], rango[1], jornada)
+    df_cambio = get_distribucion_cambio_jornada_ecas(rango[0], rango[1], jornada)
 
     # --- PROCESAMIENTO OPTIMIZADO DE PANDAS ---
     # Definimos una función interna de filtrado para no repetir código
@@ -228,7 +255,13 @@ def update_full_dashboard(n_clicks, rango, top_n, jornada, inst_manuales):
     df_perm_raw['tasa_permanencia_pct'] = (df_perm_raw['retenidos_n1'] * 100.0 / 
                                            df_perm_raw['base_n'].replace(0, pd.NA)).fillna(0).round(2)
     
+    #Filtrado
     df_perm_final = filtrar_df(df_perm_raw, is_perm=True)
     df_ing_final = filtrar_df(df_ingresos_raw, is_perm=False)
 
-    return create_ingresos_line_chart(df_ing_final), create_permanencia_line_chart(df_perm_final)
+    fig_ing= create_ingresos_line_chart(df_ing_final)
+    fig_perm= create_permanencia_line_chart(df_perm_final)
+    fig_cambio = create_cambio_jornada_charts(df_cambio)
+    
+
+    return fig_ing, fig_perm, fig_cambio

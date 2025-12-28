@@ -1,5 +1,6 @@
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 
 def create_ingresos_line_chart(df):
@@ -113,4 +114,52 @@ def create_permanencia_line_chart(df: pd.DataFrame) -> go.Figure:
         margin=dict(t=100, l=60, r=40, b=120)
     )
 
+    return fig
+
+def create_cambio_jornada_charts(df):
+    if df.empty:
+        return go.Figure().update_layout(title="Sin datos para el rango seleccionado")
+
+    jornadas = df['jornada_origen'].unique()
+    # Definimos colores fijos para consistencia
+    colores = {
+        'Mantiene Jornada': '#2ecc71', # Verde
+        'Cambio de Jornada': '#3498db', # Azul
+        'Deserción': '#e74c3c'          # Rojo
+    }
+
+    # Creamos subplots: 1 fila, N columnas (una por cada jornada de origen)
+    fig = make_subplots(
+        rows=1, cols=len(jornadas),
+        subplot_titles=[f"Origen: {j}" for j in jornadas],
+        shared_yaxes=True
+    )
+
+    for i, jornada in enumerate(jornadas):
+        df_plot = df[df['jornada_origen'] == jornada]
+        
+        # Agregamos las barras apiladas por cada estado
+        for estado in ['Mantiene Jornada', 'Cambio de Jornada', 'Deserción']:
+            df_estado = df_plot[df_plot['estado_retencion'] == estado]
+            
+            fig.add_trace(
+                go.Bar(
+                    name=estado,
+                    x=df_estado['cohorte'],
+                    y=df_estado['cantidad_alumnos'],
+                    marker_color=colores[estado],
+                    showlegend=(i == 0), # Solo mostrar leyenda en el primer gráfico
+                    hovertemplate="Cohorte %{x}<br>Cantidad: %{y}<extra></extra>"
+                ),
+                row=1, col=i+1
+            )
+
+    fig.update_layout(
+        barmode='stack',
+        title_text="Distribución de Permanencia y Cambio de Jornada",
+        height=450,
+        template="plotly_white",
+        legend=dict(orientation="h", y=-0.2)
+    )
+    
     return fig
