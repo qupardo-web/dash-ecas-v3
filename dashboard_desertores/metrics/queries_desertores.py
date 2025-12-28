@@ -129,10 +129,17 @@ def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=202
     return df
 
 def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: Optional[str] = None) -> pd.DataFrame:
+
+    anio_techo_calculo = 2024 
+    anio_max_ajustado = min(anio_max, anio_techo_calculo)
+    
+    if anio_min > anio_max_ajustado:
+        return pd.DataFrame(columns=['nomb_inst', 'cohorte', 'base_n', 'retenidos_n1', 'tasa_permanencia_pct'])
+
     params = {
         "anio_min": anio_min,
-        "anio_max": anio_max,
-        "anio_max_ext": anio_max + 1
+        "anio_max": anio_max_ajustado,
+        "anio_max_ext": anio_max_ajustado + 1
     }
 
     # Filtro de jornada dinámico
@@ -141,7 +148,7 @@ def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: Opti
 
     sql = f"""
     WITH base_filtrada AS (
-        -- PASO 1: Universo total filtrado por los criterios de mercado
+        -- PASO 1: Universo de cohortes limitado hasta 2024
         SELECT 
             mrun, 
             nomb_inst, 
@@ -152,22 +159,21 @@ def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: Opti
           AND region_sede = 'Metropolitana'
           AND (nomb_carrera LIKE 'AUDITOR%' OR nomb_carrera LIKE 'CONTA%')
           AND mrun IS NOT NULL
-          AND tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación CFT', 'Centros de Formación Técnica')
+          AND tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica')
           {jornada_sql}
     ),
     universo_cohortes AS (
-        -- PASO 2: Identificar a los alumnos únicos de cada cohorte/institución (T1)
+        -- PASO 2: Estudiantes únicos por cohorte e institución
         SELECT DISTINCT mrun, nomb_inst, cohorte
         FROM base_filtrada
     ),
     retencion_n1 AS (
-        -- PASO 3: Identificar matrículas en el año N+1 (T2)
-        -- Buscamos directamente en la vista por periodo para máxima velocidad
+        -- PASO 3: Buscamos matrícula en el año siguiente (N+1)
         SELECT DISTINCT mrun, nomb_inst, CAST(cat_periodo AS INT) AS periodo_retencion
         FROM vista_matricula_unificada
         WHERE cat_periodo BETWEEN :anio_min + 1 AND :anio_max_ext
     )
-    -- PASO 4: Cruce final (Lógica N -> N+1)
+    -- PASO 4: Cruce final con Lógica N -> N+1
     SELECT 
         u.nomb_inst, 
         u.cohorte, 
@@ -185,7 +191,9 @@ def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: Opti
     with db_engine.connect() as conn:
         df = pd.read_sql(text(sql), conn, params=params)
     
-    # El cálculo de la tasa se hace en Python para no sobrecargar SQL
-    df['tasa_permanencia_pct'] = (df['retenidos_n1'] * 100.0 / df['base_n'].replace(0, pd.NA)).fillna(0).round(2)
+    # Cálculo de tasa en Pandas (evita divisiones por cero)
+    df['tasa_permanencia_pct'] = (
+        df['retenidos_n1'] * 100.0 / df['base_n'].replace(0, pd.NA)
+    ).fillna(0).round(2)
     
     return df

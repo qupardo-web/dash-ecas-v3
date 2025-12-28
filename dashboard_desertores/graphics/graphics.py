@@ -96,6 +96,7 @@ def create_permanencia_line_chart(df: pd.DataFrame) -> go.Figure:
             gridcolor="#eeeeee"
         ),
         xaxis=dict(
+            title=None,
             tickmode='linear',
             dtick=1,
             gridcolor="#eeeeee"
