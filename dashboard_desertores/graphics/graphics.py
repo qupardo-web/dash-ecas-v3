@@ -2,12 +2,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
+import numpy as np
 
 def create_ingresos_line_chart(df):
     if df is None or df.empty: 
         return go.Figure().update_layout(title="Sin datos para los filtros seleccionados")
 
-    # 1. Crear el gráfico base con una paleta de colores variada
+    # 1. Crear el gráfico base
     fig = px.line(
         df, 
         x="cohorte", 
@@ -15,16 +16,28 @@ def create_ingresos_line_chart(df):
         color="nomb_inst",
         markers=True, 
         template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Plotly # Colores distintos para cada línea
+        color_discrete_sequence=px.colors.qualitative.Plotly 
     )
+
+    # --- NUEVA LÓGICA: LÍNEA DE PROMEDIO ---
+    # Si el DataFrame contiene solo una institución, añadimos la línea de promedio
+    instituciones = df['nomb_inst'].unique()
+    if len(instituciones) == 1:
+        promedio = df['total_ingresos'].mean()
+        
+        fig.add_hline(
+            y=promedio, 
+            line_dash="dot", 
+            line_color="red",
+            annotation_text=f"Promedio: {promedio:.0f}", 
+            annotation_position="top left"
+        )
 
     # 2. Configuración de TRAZAS (Estilo visual)
     fig.for_each_trace(lambda t: t.update(
-        # Eliminamos "visible='legendonly'" para que todas nazcan visibles (True por defecto)
-        # Resaltamos a ECAS por sobre las demás mediante el grosor de línea
         line=dict(
             width=5 if "ECAS" in t.name.upper() else 2,
-            color="#FF6600" if "ECAS" in t.name.upper() else None # Color institucional para ECAS
+            color="#FF6600" if "ECAS" in t.name.upper() else None 
         )
     ))
 
@@ -36,11 +49,8 @@ def create_ingresos_line_chart(df):
             y=-0.3,
             x=0.5,
             xanchor="center",
-            itemclick="toggle",
-            itemdoubleclick="toggleothers"
         ),
-        margin=dict(l=20, r=20, t=40, b=20),
-        xaxis=dict(title="Año de Ingreso (Cohorte)", tickmode='linear'),
+        xaxis=dict(title="Año de Ingreso (Cohorte)", dtick=1), # dtick=1 asegura que se vean todos los años
         yaxis=dict(title="Total Matriculados")
     )
     
@@ -161,5 +171,91 @@ def create_cambio_jornada_charts(df):
         template="plotly_white",
         legend=dict(orientation="h", y=-0.2)
     )
+    
+    return fig
+
+def create_survival_graduation_chart(df, nombre_inst):
+    
+    if df.empty:
+        return go.Figure().update_layout(title="Sin datos para la selección")
+        
+    fig = go.Figure()
+
+    # Curva de Supervivencia (Matrícula)
+    fig.add_trace(go.Scatter(
+        x=df['t_anios'], 
+        y=df['pct_supervivencia'],
+        name="Supervivencia (% Matrícula)",
+        line=dict(color="#2c3e50", width=3),
+        mode='lines+markers'
+    ))
+
+    # Curva de Titulación Acumulada
+    fig.add_trace(go.Scatter(
+        x=df['t_anios'], 
+        y=df['pct_titulacion_acum'],
+        name="Titulación Acumulada (%)",
+        line=dict(color="#e67e22", width=3, dash='dash'),
+        fill='tozeroy',
+        mode='lines+markers'
+    ))
+
+    fig.update_layout(
+        title=f"Trayectoria Académica: {nombre_inst}",
+        xaxis_title="Años transcurridos desde el ingreso (T+n)",
+        yaxis=dict(title="Porcentaje de la Cohorte", ticksuffix="%", range=[0, 105]),
+        template="plotly_white",
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+    )
+    
+    return fig
+
+def create_fuga_pie_chart(df, titulo):
+    if df.empty:
+        return px.pie(title="No hay datos para el periodo seleccionado")
+    
+    label_col = df.columns[0] # institucion_destino, carrera_destino o area_conocimiento_destino
+    
+    fig = px.pie(
+        df, 
+        values='cant', 
+        names=label_col,
+        hole=0.4,  # Estilo Donut para mejor lectura
+        color_discrete_sequence=px.colors.qualitative.Pastel
+    )
+    
+    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig.update_layout(
+        title=titulo,
+        margin=dict(t=50, b=20, l=20, r=20),
+        legend=dict(orientation="h", y=-0.1)
+    )
+    return fig
+
+def create_tiempo_descanso_horiz_chart(df):
+    if df.empty:
+        return go.Figure().update_layout(title="Sin datos de reingreso")
+
+    fig = px.bar(
+        df,
+        x='porcentaje',
+        y='Rango_de_Descanso',
+        orientation='h',
+        color='Rango_de_Descanso',
+        color_discrete_sequence=px.colors.qualitative.Prism,
+        template="plotly_white"
+    )
+
+    fig.update_layout(
+        title="Distribución de Tiempo de Descanso (Post-ECAS)",
+        xaxis_title="Porcentaje de la Población (%)",
+        yaxis_title=None,
+        xaxis=dict(range=[0, 100]),
+        showlegend=False,
+        margin=dict(l=20, r=20, t=50, b=20)
+    )
+    
+    fig.update_traces(textposition='outside')
     
     return fig
