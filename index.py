@@ -2,7 +2,7 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output
 from dashboard_desertores.pages.dashboard_desertores import layout as layout_desertores
-#from dashboard_titulados.pages.dashboard_titulados import layout as layout_titulados
+from dashboard_titulados.pages.dashboard_titulados import layout as layout_titulados
 
 # Inicialización de la App
 app = dash.Dash(
@@ -50,8 +50,8 @@ app.layout = html.Div([
 def display_page(pathname):
     if pathname == '/desertores':
         return layout_desertores
-    #elif pathname == '/titulados':
-        #return layout_titulados
+    elif pathname == '/titulados':
+        return layout_titulados
     elif pathname == '/' or pathname == '':
         return html.Div([
             dbc.Container([

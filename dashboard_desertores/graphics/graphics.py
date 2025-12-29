@@ -290,7 +290,6 @@ def create_gauge_titulacion_externa(df_metrica):
     return fig
 
 def create_gauge_exito_captacion(df):
-    print(df)
     tasa = df['tasa_exito_interno'].iloc[0] if not df.empty else 0
     total = df['total_captados'].iloc[0] if not df.empty else 0
     total_tit = df['titulados_en_ecas'].iloc[0] if not df.empty else 0
