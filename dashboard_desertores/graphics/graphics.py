@@ -259,3 +259,58 @@ def create_tiempo_descanso_horiz_chart(df):
     fig.update_traces(textposition='outside')
     
     return fig
+
+def create_gauge_titulacion_externa(df_metrica):
+    if df_metrica.empty:
+        tasa = 0
+        total_tit = 0
+    else:
+        tasa = df_metrica['tasa_exito_externo'].iloc[0]
+        total_tit = df_metrica['total_titulados_ext'].iloc[0]
+
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = tasa,
+        number = {'suffix': "%", 'font': {'size': 40}, 'valueformat': '.1f'},
+        title = {'text': f"Tasa de Éxito Externo<br><span style='font-size:0.8em;color:gray'>{total_tit} Titulados en otras Inst.</span>", 'font': {'size': 18}},
+        gauge = {
+            'axis': {'range': [0, 100], 'tickwidth': 1},
+            'bar': {'color': "#d6b822"}, 
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 50], 'color': '#f8f9fa'},
+                {'range': [50, 100], 'color': '#e9ecef'}
+            ],
+        }
+    ))
+
+    fig.update_layout(height=300, margin=dict(t=100, b=20, l=30, r=30))
+    return fig
+
+def create_gauge_exito_captacion(df):
+    print(df)
+    tasa = df['tasa_exito_interno'].iloc[0] if not df.empty else 0
+    total = df['total_captados'].iloc[0] if not df.empty else 0
+    total_tit = df['titulados_en_ecas'].iloc[0] if not df.empty else 0
+    
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = tasa,
+        number = {'suffix': "%", 'font': {'size': 40}, 'valueformat': '.1f'},
+        title = {
+            'text': f"Éxito de Captación (ECAS)<br><span style='font-size:0.8em;color:gray'>{total_tit} Titulados en ECAS.</span>", 
+            'font': {'size': 18}, 'align': 'center'
+        },
+        gauge = {
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "#2e65e6"}, # Color oscuro/azul para diferenciar del naranja
+            'steps': [
+                {'range': [0, 50], 'color': '#f8f9fa'},
+                {'range': [50, 100], 'color': '#e9ecef'}
+            ],
+        }
+    ))
+    fig.update_layout(height=300, margin=dict(t=100, b=20, l=30, r=30))
+    return fig

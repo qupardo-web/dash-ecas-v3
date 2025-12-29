@@ -160,7 +160,8 @@ def get_distribucion_cambio_jornada_ecas(anio_min, anio_max, jornada_filtro=None
 
     return df
 
-def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos"):
+def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos", jornada="Todas"):
+    # Configuración por defecto de la institución
     if not instituciones:
         instituciones = ["IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO"]
     elif isinstance(instituciones, str):
@@ -170,7 +171,7 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
     inst_params = {f"inst_{i}": nombre for i, nombre in enumerate(instituciones)}
     in_clause = ", ".join([f":{k}" for k in inst_params.keys()])
 
-    # 2. Configuración de parámetros finales
+    # 2. Diccionario base de parámetros
     params = {
         "anio_min": anios_rango[0],
         "anio_max": anios_rango[1],
@@ -183,7 +184,14 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         filtro_genero = "AND genero = :genero"
         params["genero"] = genero
 
-    # 4. Query SQL con soporte para género en todas las etapas
+    # 4. Filtro dinámico de Jornada
+    # Se aplica sobre la jornada registrada en la tabla física
+    filtro_jornada = ""
+    if jornada and jornada != "Todas":
+        filtro_jornada = "AND jornada = :jornada"
+        params["jornada"] = jornada
+
+    # 5. Query SQL con soporte multi-filtro
     sql_query = f"""
     WITH base_cohorte AS (
         SELECT nomb_inst, cohorte, COUNT(DISTINCT mrun) as total_inicial
@@ -191,6 +199,7 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         WHERE cohorte BETWEEN :anio_min AND :anio_max 
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
+          {filtro_jornada}
         GROUP BY nomb_inst, cohorte
     ),
     matriculados_por_anio AS (
@@ -201,10 +210,10 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         WHERE cohorte BETWEEN :anio_min AND :anio_max 
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
+          {filtro_jornada}
         GROUP BY nomb_inst, cohorte, (periodo - cohorte)
     ),
     titulados_por_anio AS (
-        -- Importante: Asegurar que tabla_dashboard_titulados también tenga columna genero
         SELECT 
             nomb_inst, cohorte, anios_para_titularse AS t_anios,
             COUNT(DISTINCT mrun) AS n_titulados
@@ -212,6 +221,7 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         WHERE cohorte BETWEEN :anio_min AND :anio_max 
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
+          {filtro_jornada}
         GROUP BY anios_para_titularse, nomb_inst, cohorte
     ),
     calculos_por_cohorte AS (
@@ -232,7 +242,8 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
     ORDER BY nomb_inst, t_anios
     """
 
-    df = pd.read_sql(text(sql_query), db_engine, params=params)
+    with db_engine.connect() as conn:
+        df = pd.read_sql(text(sql_query), conn, params=params)
     
     return df
 
@@ -260,4 +271,154 @@ def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos")
     else:
         df['tasa_exito_externo'] = 0
         
+    return df
+
+def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, jornada: str = "Todas", genero: str = "Todos", top_n: int = 5):
+    """
+    Obtiene el ranking de destinos (institución, carrera o área) utilizando SQL.
+    """
+    params = {
+        "anio_min": rango_anios[0],
+        "anio_max": rango_anios[1],
+        "orden": orden,
+        "top_n": top_n
+    }
+
+    # Filtros dinámicos
+    filtro_jornada = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
+    if filtro_jornada: params["jornada"] = jornada
+    
+    filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
+    if filtro_genero: params["genero"] = genero
+
+    sql_query = f"""
+    WITH primer_reingreso AS (
+        -- Identificamos el destino N específico para cada estudiante cronológicamente
+        SELECT 
+            mrun,
+            {columna} as destino,
+            ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_destino ASC) as rn
+        FROM tabla_fuga_detallada_desertores
+        WHERE anio_cohorte_ecas BETWEEN :anio_min AND :anio_max
+        {filtro_jornada}
+        {filtro_genero}
+    )
+    SELECT TOP (:top_n)
+        destino as {columna},
+        COUNT(DISTINCT mrun) as cant
+    FROM primer_reingreso
+    WHERE rn = :orden
+    GROUP BY destino
+    ORDER BY cant DESC
+    """
+
+    df = pd.read_sql(text(sql_query), db_engine, params=params)
+
+    return df
+
+def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", genero: str = "Todos") -> pd.DataFrame:
+    """
+    Calcula la distribución de tiempo de descanso mediante una query SQL directa.
+    """
+    params = {
+        "anio_min": rango_anios[0],
+        "anio_max": rango_anios[1]
+    }
+
+    filtro_jornada = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
+    if filtro_jornada: params["jornada"] = jornada
+    
+    filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
+    if filtro_genero: params["genero"] = genero
+
+    sql_query = f"""
+    WITH primer_contacto AS (
+        -- Obtenemos el año del primer reingreso al sistema para cada desertor
+        SELECT 
+            mrun,
+            anio_primer_fuga,
+            MIN(anio_matricula_destino) as primer_ingreso_destino
+        FROM tabla_fuga_detallada_desertores
+        WHERE anio_cohorte_ecas BETWEEN :anio_min AND :anio_max
+        {filtro_jornada}
+        {filtro_genero}
+        GROUP BY mrun, anio_primer_fuga
+    ),
+    calculo_diferencia AS (
+        SELECT 
+            mrun,
+            (primer_ingreso_destino - anio_primer_fuga) as diff
+        FROM primer_contacto
+    ),
+    categorizacion AS (
+        SELECT 
+            mrun,
+            CASE 
+                WHEN diff <= 0 THEN 'Inmediato (<=0)'
+                WHEN diff = 1 THEN '1 año'
+                WHEN diff = 2 THEN '2 años'
+                WHEN diff BETWEEN 3 AND 5 THEN '3 a 5 años'
+                WHEN diff BETWEEN 6 AND 10 THEN '6 a 10 años'
+                ELSE '+10 años'
+            END AS Rango_de_Descanso
+        FROM calculo_diferencia
+    )
+    SELECT 
+        Rango_de_Descanso,
+        COUNT(mrun) as conteo,
+        CAST(COUNT(mrun) AS FLOAT) * 100 / SUM(COUNT(mrun)) OVER() as porcentaje
+    FROM categorizacion
+    GROUP BY Rango_de_Descanso
+    """
+
+    
+    df = pd.read_sql(text(sql_query), db_engine, params=params)
+        
+    # Ordenar las categorías manualmente para asegurar consistencia visual en el gráfico
+    orden_categorias = ['Inmediato (<=0)', '1 año', '2 años', '3 a 5 años', '6 a 10 años', '+10 años']
+    df['Rango_de_Descanso'] = pd.Categorical(df['Rango_de_Descanso'], categories=orden_categorias, ordered=True)
+    return df.sort_values('Rango_de_Descanso')
+
+def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
+    params = {
+        "anio_min": rango_anios[0],
+        "anio_max": rango_anios[1]
+    }
+
+    filtro_jornada = "AND p.jornada = :jornada" if jornada != "Todas" else ""
+    if filtro_jornada: params["jornada"] = jornada
+    
+    filtro_genero = "AND p.genero = :genero" if genero != "Todos" else ""
+    if filtro_genero: params["genero"] = genero
+
+    sql_query = f"""
+    WITH estudiantes_captados AS (
+        -- Estudiantes que entraron a ECAS en el rango pero tenían matrícula previa en otro lado
+        SELECT DISTINCT p.mrun, p.genero, p.jornada, p.cohorte
+        FROM tabla_dashboard_permanencia p
+        WHERE p.cod_inst = 104
+          AND p.cohorte BETWEEN :anio_min AND :anio_max
+          {filtro_jornada}
+          {filtro_genero}
+          AND EXISTS (
+              SELECT 1 FROM vista_matricula_unificada v
+              WHERE v.mrun = p.mrun 
+                AND v.cat_periodo < p.cohorte 
+                AND v.cod_inst <> 104
+          )
+    )
+    SELECT 
+        COUNT(DISTINCT e.mrun) as total_captados,
+        COUNT(DISTINCT t.mrun) as titulados_en_ecas,
+        CASE 
+            WHEN COUNT(DISTINCT e.mrun) > 0 
+            THEN (CAST(COUNT(DISTINCT t.mrun) AS FLOAT) / COUNT(DISTINCT e.mrun)) * 100 
+            ELSE 0 
+        END as tasa_exito_interno
+    FROM estudiantes_captados e
+    LEFT JOIN tabla_dashboard_titulados t ON e.mrun = t.mrun AND t.cod_inst = 104
+    """
+
+    with db_engine.connect() as conn:
+        df = pd.read_sql(text(sql_query), conn, params=params)
     return df
