@@ -206,11 +206,11 @@ layout = dbc.Container([
                                     dbc.RadioItems(
                                         id="radio-dimension-fuga",
                                         options=[
-                                            {"label": "Institución", "value": "institucion_destino"},
+                                            {"label": "Institución", "value": "inst_destino"},
                                             {"label": "Carrera", "value": "carrera_destino"},
                                             {"label": "Área", "value": "area_conocimiento_destino"},
                                         ],
-                                        value="institucion_destino",
+                                        value="inst_destino",
                                         inline=True,
                                     )
                                 ], width=6, className="text-end")

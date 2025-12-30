@@ -215,7 +215,7 @@ def create_fuga_pie_chart(df, titulo):
     if df.empty:
         return px.pie(title="No hay datos para el periodo seleccionado")
     
-    label_col = df.columns[0] # institucion_destino, carrera_destino o area_conocimiento_destino
+    label_col = df.columns[0] # inst_destino, carrera_destino o area_conocimiento_destino
     
     fig = px.pie(
         df, 

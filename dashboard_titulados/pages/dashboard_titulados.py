@@ -1,5 +1,7 @@
+import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html
+from dash import dcc, html, callback, Output, Input, State
+from dashboard_titulados.metrics.queries_titulados import *
 
 SIDEBAR_STYLE = {
     "height": "calc(100vh - 56px)",
@@ -49,15 +51,18 @@ layout = dbc.Container([
             html.Div([
                 html.H4("Parámetros de Análisis", className="text-primary mb-4"),
                 html.Hr(),
-                
-                # Instituciones
-                html.Label("Instituciones de Competencia:", className="fw-bold"),
-                dcc.Dropdown(
-                    id='selector-instituciones-competencia',
-                    options=[], # Se puebla vía callback
-                    multi=True,
-                    placeholder="Seleccione para comparar...",
-                    className="mb-4"
+
+                html.Label("Población:", className="fw-bold"),
+                dbc.RadioItems(
+                    id='radio-poblacion-ex-alumnos',
+                    options=[
+                        {"label": "Todos", "value": "Todos"},
+                        {"label": "Titulados", "value": "Titulados"},
+                        {"label": "Desertores", "value": "Desertores"},
+                    ],
+                    value="Todos",
+                    className="mb-4",
+                    inline=True
                 ),
                 
                 # Rango de Años
@@ -65,18 +70,8 @@ layout = dbc.Container([
                 dcc.RangeSlider(
                     id='slider-años-desertores',
                     min=2007, max=2025, step=1,
-                    value=[2018, 2024],
+                    value=[2007, 2007],
                     marks={i: str(i) for i in range(2007, 2026, 3)},
-                    className="mb-4"
-                ),
-                
-                # Top N
-                html.Label("Mostrar Top N del Mercado:", className="fw-bold"),
-                dcc.Slider(
-                    id='slider-top-n-desertores',
-                    min=5, max=20, step=5,
-                    value=10,
-                    marks={i: f"Top {i}" for i in [5, 10, 15, 20]},
                     className="mb-4"
                 ),
                 
@@ -116,14 +111,15 @@ layout = dbc.Container([
             dbc.Row([
                 dbc.Col([
                     html.H2("Seguimiento de EX Estudiantes ECAS", className="border-bottom pb-2"),
-                    html.P("Evaluación de educación continua incluyendo a titulados de ECAS como Desertores", className="lead text-muted")
+                    html.P("Evaluación de educación continua que incluye tanto a titulados de ECAS como Desertores", className="lead text-muted")
                 ])
             ], className="mb-4"),
 
             # Fila de KPIs Superiores (Tarjetas Estáticas)
             dbc.Row([
-                dbc.Col(crear_card_metric_estatica("val-titulados", "Total Cohorte", "fa-graduation-cap"), width=6),
-                dbc.Col(crear_card_metric_estatica("val-abandono", "Total Titulados", "fa-door-open"), width=6),
+                dbc.Col(crear_card_metric_estatica("val-cohorte", "Total Cohorte", "fa-users"), width=4),
+                dbc.Col(crear_card_metric_estatica("val-titulados", "Total Titulados", "fa-graduation-cap"), width=4),
+                dbc.Col(crear_card_metric_estatica("val-desertores", "Total Desertores", "fa-door-open"), width=4),
             ], className="mb-4"),
 
             # Fila 1: Gráfico Principal de Ingresos
@@ -210,11 +206,11 @@ layout = dbc.Container([
                                 dbc.Col(dbc.RadioItems(
                                     id="radio-dimension-fuga",
                                     options=[
-                                        {"label": "Institución", "value": "institucion_destino"},
+                                        {"label": "Institución", "value": "inst_destino"},
                                         {"label": "Carrera", "value": "carrera_destino"},
                                         {"label": "Área", "value": "area_conocimiento_destino"},
                                     ],
-                                    value="institucion_destino",
+                                    value="inst_destino",
                                     inline=True,
                                 ), width=6, className="text-end")
                             ])
@@ -274,3 +270,24 @@ layout = dbc.Container([
         ], width=9, style=CONTENT_STYLE)
     ])
 ], fluid=True)
+
+from dash.dependencies import Input, Output
+
+@callback(
+    [Output("val-cohorte", "children"),
+     Output("val-titulados", "children"),
+     Output("val-desertores", "children")],
+    [Input("slider-años-desertores", "value"),
+     Input("radio-jornada-desertores", "value"),
+     Input("radio-genero-desertores", "value")]
+)
+def update_kpi_cards(rango_anios, jornada, genero):
+    # Obtener los valores desde la DB
+    total_ingreso, total_tit, total_des = get_kpis_cabecera(rango_anios, jornada, genero)
+    
+    # Formatear con separador de miles
+    return (
+        f"{total_ingreso:,}".replace(",", "."),
+        f"{total_tit:,}".replace(",", "."),
+        f"{total_des:,}".replace(",", ".")
+    )

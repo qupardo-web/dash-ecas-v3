@@ -249,10 +249,10 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
 
 def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos"):
 
-    condiciones = [f"anio_cohorte_ecas BETWEEN {rango_anios[0]} AND {rango_anios[1]}"]
+    condiciones = [f"anio_ingreso_ecas BETWEEN {rango_anios[0]} AND {rango_anios[1]}"]
     
     if jornada != "Todas":
-        condiciones.append(f"jornada_ecas = '{jornada}'")
+        condiciones.append(f"jornada_titulacion = '{jornada}'")
     if genero != "Todos":
         condiciones.append(f"genero = '{genero}'")
         
@@ -273,6 +273,8 @@ def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos")
         
     return df
 
+#print(get_metrica_titulacion_externa(rango_anios=[2007,2025]))
+
 def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, jornada: str = "Todas", genero: str = "Todos", top_n: int = 5):
     """
     Obtiene el ranking de destinos (institución, carrera o área) utilizando SQL.
@@ -285,7 +287,7 @@ def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, j
     }
 
     # Filtros dinámicos
-    filtro_jornada = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
+    filtro_jornada = "AND jornada_titulacion = :jornada" if jornada != "Todas" else ""
     if filtro_jornada: params["jornada"] = jornada
     
     filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
@@ -297,9 +299,9 @@ def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, j
         SELECT 
             mrun,
             {columna} as destino,
-            ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_destino ASC) as rn
+            ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as rn
         FROM tabla_fuga_detallada_desertores
-        WHERE anio_cohorte_ecas BETWEEN :anio_min AND :anio_max
+        WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
         {filtro_jornada}
         {filtro_genero}
     )
@@ -316,6 +318,8 @@ def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, j
 
     return df
 
+#print(get_fuga_por_rango(columna="inst_destino", orden=1, rango_anios=[2007,2007]))
+
 def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", genero: str = "Todos") -> pd.DataFrame:
     """
     Calcula la distribución de tiempo de descanso mediante una query SQL directa.
@@ -325,7 +329,7 @@ def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", 
         "anio_max": rango_anios[1]
     }
 
-    filtro_jornada = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
+    filtro_jornada = "AND jornada_titulacion = :jornada" if jornada != "Todas" else ""
     if filtro_jornada: params["jornada"] = jornada
     
     filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
@@ -336,18 +340,18 @@ def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", 
         -- Obtenemos el año del primer reingreso al sistema para cada desertor
         SELECT 
             mrun,
-            anio_primer_fuga,
-            MIN(anio_matricula_destino) as primer_ingreso_destino
+            anio_titulacion,
+            MIN(anio_matricula_post) as primer_ingreso_destino
         FROM tabla_fuga_detallada_desertores
-        WHERE anio_cohorte_ecas BETWEEN :anio_min AND :anio_max
+        WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
         {filtro_jornada}
         {filtro_genero}
-        GROUP BY mrun, anio_primer_fuga
+        GROUP BY mrun, anio_titulacion
     ),
     calculo_diferencia AS (
         SELECT 
             mrun,
-            (primer_ingreso_destino - anio_primer_fuga) as diff
+            (primer_ingreso_destino - anio_titulacion) as diff
         FROM primer_contacto
     ),
     categorizacion AS (
@@ -378,6 +382,8 @@ def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", 
     orden_categorias = ['Inmediato (<=0)', '1 año', '2 años', '3 a 5 años', '6 a 10 años', '+10 años']
     df['Rango_de_Descanso'] = pd.Categorical(df['Rango_de_Descanso'], categories=orden_categorias, ordered=True)
     return df.sort_values('Rango_de_Descanso')
+
+#print(get_tiempo_de_descanso_procesado(rango_anios=[2007,2007]))
 
 def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
     params = {
@@ -419,6 +425,8 @@ def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
     LEFT JOIN tabla_dashboard_titulados t ON e.mrun = t.mrun AND t.cod_inst = 104
     """
 
-    with db_engine.connect() as conn:
-        df = pd.read_sql(text(sql_query), conn, params=params)
+    df = pd.read_sql(text(sql_query), db_engine, params=params)
+
     return df
+
+#print(get_metrica_exito_captacion(rango_anios=[2007,2025]))
