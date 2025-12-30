@@ -252,7 +252,7 @@ def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos")
     condiciones = [f"anio_ingreso_ecas BETWEEN {rango_anios[0]} AND {rango_anios[1]}"]
     
     if jornada != "Todas":
-        condiciones.append(f"jornada_titulacion = '{jornada}'")
+        condiciones.append(f"jornada_ecas = '{jornada}'")
     if genero != "Todos":
         condiciones.append(f"genero = '{genero}'")
         
@@ -287,7 +287,7 @@ def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, j
     }
 
     # Filtros dinámicos
-    filtro_jornada = "AND jornada_titulacion = :jornada" if jornada != "Todas" else ""
+    filtro_jornada = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
     if filtro_jornada: params["jornada"] = jornada
     
     filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
@@ -329,7 +329,7 @@ def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", 
         "anio_max": rango_anios[1]
     }
 
-    filtro_jornada = "AND jornada_titulacion = :jornada" if jornada != "Todas" else ""
+    filtro_jornada = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
     if filtro_jornada: params["jornada"] = jornada
     
     filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
@@ -340,18 +340,18 @@ def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", 
         -- Obtenemos el año del primer reingreso al sistema para cada desertor
         SELECT 
             mrun,
-            anio_titulacion,
+            anio_fuga_ecas,
             MIN(anio_matricula_post) as primer_ingreso_destino
         FROM tabla_fuga_detallada_desertores
         WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
         {filtro_jornada}
         {filtro_genero}
-        GROUP BY mrun, anio_titulacion
+        GROUP BY mrun, anio_fuga_ecas
     ),
     calculo_diferencia AS (
         SELECT 
             mrun,
-            (primer_ingreso_destino - anio_titulacion) as diff
+            (primer_ingreso_destino - anio_fuga_ecas) as diff
         FROM primer_contacto
     ),
     categorizacion AS (

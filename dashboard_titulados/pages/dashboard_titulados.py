@@ -2,6 +2,7 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, callback, Output, Input, State
 from dashboard_titulados.metrics.queries_titulados import *
+from dashboard_titulados.graphics.graphics import *
 
 SIDEBAR_STYLE = {
     "height": "calc(100vh - 56px)",
@@ -72,6 +73,15 @@ layout = dbc.Container([
                     min=2007, max=2025, step=1,
                     value=[2007, 2007],
                     marks={i: str(i) for i in range(2007, 2026, 3)},
+                    className="mb-4"
+                ),
+
+                html.Label("Cantidad de resultados (Top N):", className="fw-bold"),
+                dcc.Slider(
+                    id='slider-top-n-desertores',
+                    min=5, max=20, step=5,
+                    value=10,
+                    marks={5: '5', 10: '10', 15: '15', 20: '20'},
                     className="mb-4"
                 ),
                 
@@ -158,107 +168,41 @@ layout = dbc.Container([
                 ], width=6)
             ]),
 
-            # Fila 2: Permanencia y Jornada
-            dbc.Row([
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardHeader("Permanencia N → N+1 (%)", className="fw-bold"),
-                        dbc.CardBody([
-                            dcc.Graph(id='grafico-permanencia-n1', style={"height": "350px"})
-                        ])
-                    ], className="shadow-sm mb-4")
-                ], width=6),
-                
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardHeader("Permanencia por jornada (ECAS)", className="fw-bold"),
-                        dbc.CardBody([
-                            dcc.Graph(id='grafico-permanencia-jornada', style={"height": "350px"})
-                        ])
-                    ], className="shadow-sm mb-4")
-                ], width=6)
-            ]),
-
-            # Fila 3: Supervivencia vs Titulación
             dbc.Row([
                 dbc.Col([
                     dbc.Card([
                         dbc.CardHeader([
                             dbc.Row([
-                                dbc.Col("Tasas de supervivencia y titulación por cohorte", width=8),
-                                dbc.Col(dcc.Dropdown(id='selector-inst-supervivencia', placeholder="Filtrar institución..."), width=4)
+                                dbc.Col("Análisis de Destino Detallado", width=4, className="align-self-center"),
+                                dbc.Col([
+                                    # Selector de Nivel (solo relevante cuando se ve 'Carreras')
+                                    html.Span("Nivel: ", className="small me-2"),
+                                    dbc.Select(
+                                        id="selector-nivel-carrera",
+                                        options=[
+                                            {"label": "Todos", "value": "Todos"},
+                                            {"label": "Pregrado", "value": "Pregrado"},
+                                            {"label": "Postítulo", "value": "Postítulo"},
+                                            {"label": "Postgrado", "value": "Postgrado"},
+                                        ],
+                                        value="Todos", size="sm",
+                                        style={"width": "140px", "display": "inline-block", "margin-right": "15px"}
+                                    ),
+                                ], width=8, className="text-end")
                             ])
                         ], className="fw-bold"),
                         dbc.CardBody([
-                            dcc.Graph(id='grafico-supervivencia-titulacion')
-                        ])
-                    ], className="shadow-sm mb-4")
-                ], width=12)
-            ]),
-
-            # Fila 4: Análisis de Destino (Fuga)
-            dbc.Row([
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardHeader([
-                            dbc.Row([
-                                dbc.Col("Análisis de Destino (Fuga)", width=6),
-                                dbc.Col(dbc.RadioItems(
-                                    id="radio-dimension-fuga",
-                                    options=[
-                                        {"label": "Institución", "value": "inst_destino"},
-                                        {"label": "Carrera", "value": "carrera_destino"},
-                                        {"label": "Área", "value": "area_conocimiento_destino"},
-                                    ],
-                                    value="inst_destino",
-                                    inline=True,
-                                ), width=6, className="text-end")
-                            ])
-                        ], className="fw-bold"),
-                        dbc.CardBody([
-                            dbc.Row([
-                                dbc.Col(dcc.Graph(id="pie-fuga-1"), width=4),
-                                dbc.Col(dcc.Graph(id="pie-fuga-2"), width=4),
-                                dbc.Col(dcc.Graph(id="pie-fuga-3"), width=4),
-                            ])
-                        ])
-                    ], className="shadow-sm mb-4")
-                ], width=12)
-            ]),
-
-            # Fila 5: Tiempo de Descanso
-            dbc.Row([
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardHeader([
-                            html.I(className="fas fa-history me-2"),
-                            "Distribución de Tiempo de Descanso (Post-ECAS)"
-                        ], className="fw-bold bg-light"),
-                        dbc.CardBody([
-                            html.P("Años transcurridos hasta el primer reingreso al sistema.", className="text-muted small"),
-                            dcc.Graph(id='grafico-tiempo-descanso', style={"height": "400px"})
-                        ])
-                    ], className="shadow-sm mb-4")
-                ], width=12)
-            ]),
-
-            # Fila 6: Gauges de Trayectoria (Balance de Éxito)
-            dbc.Row([
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardHeader("Balance de Éxito Académico (Titulaciones)", className="fw-bold bg-light"),
-                        dbc.CardBody([
-                            dbc.Row([
-                                dbc.Col([
-                                    dcc.Loading(dcc.Graph(id='grafico-gauge-titulacion-ext'))
-                                ], width=6, className="border-right"),
-                                dbc.Col([
-                                    dcc.Loading(dcc.Graph(id='grafico-gauge-exito-captacion'))
-                                ], width=6),
-                            ]),
-                            html.Hr(),
-                            html.P("Comparativa entre desertores que se titulan fuera vs. captados que se titulan en ECAS.", 
-                                   className="text-muted small text-center")
+                            # Sistema de Pestañas para elegir qué gráfico ver
+                            dbc.Tabs([
+                                dbc.Tab(label="Top Instituciones", tab_id="tab-instituciones"),
+                                dbc.Tab(label="Top Carreras", tab_id="tab-carreras"),
+                                dbc.Tab(label="Tipo de Institución", tab_id="tab-tipo-inst"),
+                            ], id="tabs-fuga", active_tab="tab-instituciones", className="mb-3"),
+                            
+                            # Contenedor único para el gráfico seleccionado
+                            dcc.Loading(
+                                dcc.Graph(id="grafico-destino-unificado", style={"height": "500px"})
+                            )
                         ])
                     ], className="shadow-sm mb-4")
                 ], width=12)
@@ -270,8 +214,6 @@ layout = dbc.Container([
         ], width=9, style=CONTENT_STYLE)
     ])
 ], fluid=True)
-
-from dash.dependencies import Input, Output
 
 @callback(
     [Output("val-cohorte", "children"),
@@ -291,3 +233,83 @@ def update_kpi_cards(rango_anios, jornada, genero):
         f"{total_tit:,}".replace(",", "."),
         f"{total_des:,}".replace(",", ".")
     )
+
+@callback(
+    [Output('grafico-reingreso-inmediato', 'figure'),
+     Output('grafico-reingreso-maximo', 'figure')],
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-poblacion-ex-alumnos', 'value'), # "Todos", "Titulados" o "Desertores"
+     Input('radio-jornada-desertores', 'value'),
+     Input('radio-genero-desertores', 'value')]
+)
+def update_reingreso_graphs(rango_anios, poblacion, jornada, genero):
+    # 1. Llamada a Query Unificada para Reingreso Inmediato (Primero)
+    df_inmediato = get_nivel_post_salida(
+        rango_anios=rango_anios, 
+        tipo_poblacion=poblacion,  # Pasamos "Todos" directamente
+        criterio="Primero", 
+        jornada=jornada, 
+        genero=genero
+    )
+    
+    # 2. Llamada a Query Unificada para Reingreso Máximo (Maximo)
+    df_maximo = get_nivel_post_salida(
+        rango_anios=rango_anios, 
+        tipo_poblacion=poblacion, 
+        criterio="Maximo", 
+        jornada=jornada, 
+        genero=genero
+    )
+
+    # 3. Llamada a Generadores de Gráficos
+    # Los generadores ya están preparados para recibir el DataFrame y el nombre de la población
+    fig_inm = crear_grafico_reingreso_inmediato(df_inmediato, poblacion)
+    fig_max = crear_grafico_reingreso_maximo(df_maximo, poblacion)
+
+    return fig_inm, fig_max
+
+@callback(
+    Output("grafico-destino-unificado", "figure"),
+    [Input("tabs-fuga", "active_tab"),
+     Input("slider-años-desertores", "value"),
+     Input("radio-poblacion-ex-alumnos", "value"),
+     Input("radio-jornada-desertores", "value"),
+     Input("radio-genero-desertores", "value"),
+     Input("slider-top-n-desertores", "value"),
+     Input("selector-nivel-carrera", "value")]
+)
+def update_destino_unificado(tab_activa, rango, poblacion, jornada, genero, top_n, nivel):
+    # Lógica para determinar qué dimensión consultar
+    if tab_activa == "tab-instituciones":
+        dimension = "inst_destino"
+        titulo = f"Top {top_n} Instituciones de Destino"
+        es_horizontal = True
+        nivel_query = "Todos" # En instituciones vemos todo el universo
+        
+    elif tab_activa == "tab-carreras":
+        dimension = "carrera_destino"
+        titulo = f"Top {top_n} Carreras ({nivel})"
+        es_horizontal = True
+        nivel_query = nivel
+        
+    else: # tab-tipo-inst
+        dimension = "tipo_inst_1"
+        titulo = "Distribución por Tipo de Institución"
+        es_horizontal = False
+        nivel_query = "Todos"
+
+    # Llamada a la query unificada (la que creamos en el paso anterior)
+    df = get_top_destinos_filtrado(
+        rango_anios=rango,
+        tipo_poblacion=poblacion,
+        dimension=dimension,
+        nivel=nivel_query,
+        jornada=jornada,
+        genero=genero,
+        top_n=top_n
+    )
+
+    # Generación del gráfico usando tu función de plots
+    # Si es Institución o Carrera -> Barras Horizontales
+    # Si es Tipo Inst -> Pie Chart
+    return crear_grafico_top_destinos(df, titulo, es_horizontal=es_horizontal)
