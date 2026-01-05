@@ -25,7 +25,7 @@ def crear_card_metric_estatica(id_valor, titulo, icono_class):
         dbc.CardBody([
             dbc.Row([
                 # Icono decorativo en color naranja ECAS/Warning
-                dbc.Col(html.I(className=f"fas {icono_class} fa-2x", style={"color": "#f39c12"}), width=3),
+                dbc.Col(html.I(className=f"fas {icono_class} fa-2x", style={"color": "#162f8a"}), width=3),
                 dbc.Col([
                     html.P(titulo, className="text-muted mb-0", style={"fontSize": "1.1rem", "fontWeight": "600"}),
                     # Spinner que envuelve el valor mientras carga el callback
@@ -112,6 +112,23 @@ layout = dbc.Container([
                     className="mb-4",
                     inline=True
                 ),
+                html.Label("Rango Etario (Ingreso):", className="fw-bold"),
+
+                dcc.Dropdown(
+                    id='dropdown-edad-ex-alumnos',
+                    options=[
+                        {"label": "Todos los rangos", "value": "Todos"},
+                        {"label": "15 a 19 años", "value": "15 a 19 años"},
+                        {"label": "20 a 24 años", "value": "20 a 24 años"},
+                        {"label": "25 a 29 años", "value": "25 a 29 años"},
+                        {"label": "30 a 34 años", "value": "30 a 34 años"},
+                        {"label": "35 a 39 años", "value": "35 a 39 años"},
+                        {"label": "40 y más años", "value": "40 y más años"},
+                    ],
+                    value="Todos",
+                    clearable=False,
+                    className="mb-4"
+                ),
             ])
         ], width=3, style=SIDEBAR_STYLE),
 
@@ -120,8 +137,8 @@ layout = dbc.Container([
             # Cabecera
             dbc.Row([
                 dbc.Col([
-                    html.H2("Seguimiento de EX Estudiantes ECAS", className="border-bottom pb-2"),
-                    html.P("Evaluación de educación continua que incluye tanto a titulados de ECAS como Desertores", className="lead text-muted")
+                    html.H2("Seguimiento de Ex-Estudiantes ECAS", className="border-bottom pb-2"),
+                    html.P("Dashboard para el analisis de trayectorias post-ECAS", className="lead text-muted")
                 ])
             ], className="mb-4"),
 
@@ -190,13 +207,14 @@ layout = dbc.Container([
                                     ),
                                 ], width=8, className="text-end")
                             ])
-                        ], className="fw-bold"),
+                        ], className="fw-bold bg-primary text-white"),
                         dbc.CardBody([
                             # Sistema de Pestañas para elegir qué gráfico ver
                             dbc.Tabs([
                                 dbc.Tab(label="Top Instituciones", tab_id="tab-instituciones"),
                                 dbc.Tab(label="Top Carreras", tab_id="tab-carreras"),
                                 dbc.Tab(label="Tipo de Institución", tab_id="tab-tipo-inst"),
+                                dbc.Tab(label="Tipo de Area", tab_id="tab-area-destino"),
                             ], id="tabs-fuga", active_tab="tab-instituciones", className="mb-3"),
                             
                             # Contenedor único para el gráfico seleccionado
@@ -206,6 +224,34 @@ layout = dbc.Container([
                         ])
                     ], className="shadow-sm mb-4")
                 ], width=12)
+            ]),
+
+            dbc.Row([
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            dbc.Row([
+                                dbc.Col("Trayectoria de ex estudiantes de ECAS", className="align-self center"),
+                            ])
+                        ], className="fw-bold bg-primary text-white"),
+                        dbc.CardBody([
+                            dcc.Loading(
+                                id="loading-trayectoria",
+                                type="circle",
+                                children=dcc.Graph(id='grafico-trayectorias-pictograma'),
+                                color="#FF6600"
+                            )
+                        ])
+                    ], className="shadow-sm mb-4")
+                ], width= 6),
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader("Continuidad de Estudios (Titulados)", className="fw-bold bg-primary text-white"),
+                        dbc.CardBody([
+                            dcc.Graph(id='grafico-continuidad-estudios')
+                        ])
+                    ], className="shadow-sm mb-4")
+                ], width=6)
             ]),
             
             # Espacio final
@@ -221,13 +267,13 @@ layout = dbc.Container([
      Output("val-desertores", "children")],
     [Input("slider-años-desertores", "value"),
      Input("radio-jornada-desertores", "value"),
-     Input("radio-genero-desertores", "value")]
+     Input("radio-genero-desertores", "value"),
+     Input("dropdown-edad-ex-alumnos", "value")] # <-- Nuevo Input
 )
-def update_kpi_cards(rango_anios, jornada, genero):
-    # Obtener los valores desde la DB
-    total_ingreso, total_tit, total_des = get_kpis_cabecera(rango_anios, jornada, genero)
+def update_kpi_cards(rango_anios, jornada, genero, rango_edad):
+    # Ahora pasamos 'rango_edad' a la query
+    total_ingreso, total_tit, total_des = get_kpis_cabecera(rango_anios, jornada, genero, rango_edad)
     
-    # Formatear con separador de miles
     return (
         f"{total_ingreso:,}".replace(",", "."),
         f"{total_tit:,}".replace(",", "."),
@@ -238,31 +284,31 @@ def update_kpi_cards(rango_anios, jornada, genero):
     [Output('grafico-reingreso-inmediato', 'figure'),
      Output('grafico-reingreso-maximo', 'figure')],
     [Input('slider-años-desertores', 'value'),
-     Input('radio-poblacion-ex-alumnos', 'value'), # "Todos", "Titulados" o "Desertores"
+     Input('radio-poblacion-ex-alumnos', 'value'),
      Input('radio-jornada-desertores', 'value'),
-     Input('radio-genero-desertores', 'value')]
+     Input('radio-genero-desertores', 'value'),
+     Input('dropdown-edad-ex-alumnos', 'value')] # <-- Nuevo Input
 )
-def update_reingreso_graphs(rango_anios, poblacion, jornada, genero):
-    # 1. Llamada a Query Unificada para Reingreso Inmediato (Primero)
+def update_reingreso_graphs(rango_anios, poblacion, jornada, genero, rango_edad):
+    # Llamada a Queries considerando el rango de edad
     df_inmediato = get_nivel_post_salida(
         rango_anios=rango_anios, 
-        tipo_poblacion=poblacion,  # Pasamos "Todos" directamente
+        tipo_poblacion=poblacion, 
         criterio="Primero", 
         jornada=jornada, 
-        genero=genero
+        genero=genero,
+        rango_edad=rango_edad
     )
     
-    # 2. Llamada a Query Unificada para Reingreso Máximo (Maximo)
     df_maximo = get_nivel_post_salida(
         rango_anios=rango_anios, 
         tipo_poblacion=poblacion, 
         criterio="Maximo", 
         jornada=jornada, 
-        genero=genero
+        genero=genero,
+        rango_edad=rango_edad
     )
 
-    # 3. Llamada a Generadores de Gráficos
-    # Los generadores ya están preparados para recibir el DataFrame y el nombre de la población
     fig_inm = crear_grafico_reingreso_inmediato(df_inmediato, poblacion)
     fig_max = crear_grafico_reingreso_maximo(df_maximo, poblacion)
 
@@ -276,29 +322,34 @@ def update_reingreso_graphs(rango_anios, poblacion, jornada, genero):
      Input("radio-jornada-desertores", "value"),
      Input("radio-genero-desertores", "value"),
      Input("slider-top-n-desertores", "value"),
-     Input("selector-nivel-carrera", "value")]
+     Input("selector-nivel-carrera", "value"),
+     Input("dropdown-edad-ex-alumnos", "value")] 
 )
-def update_destino_unificado(tab_activa, rango, poblacion, jornada, genero, top_n, nivel):
-    # Lógica para determinar qué dimensión consultar
+def update_destino_unificado(tab_activa, rango, poblacion, jornada, genero, top_n, nivel, rango_edad):
+    
     if tab_activa == "tab-instituciones":
         dimension = "inst_destino"
-        titulo = f"Top {top_n} Instituciones de Destino"
-        es_horizontal = True
-        nivel_query = "Todos" # En instituciones vemos todo el universo
-        
-    elif tab_activa == "tab-carreras":
-        dimension = "carrera_destino"
-        titulo = f"Top {top_n} Carreras ({nivel})"
+        titulo = f"Top {top_n} Instituciones de Destino de {nivel}"
         es_horizontal = True
         nivel_query = nivel
-        
-    else: # tab-tipo-inst
-        dimension = "tipo_inst_1"
-        titulo = "Distribución por Tipo de Institución"
+    elif tab_activa == "tab-carreras":
+        dimension = "carrera_destino"
+        titulo = f"Top {top_n} Carreras de destino de {nivel}"
+        es_horizontal = True
+        nivel_query = nivel
+    elif tab_activa == "tab-area-destino":
+        dimension = "area_conocimiento_destino"
+        titulo = f"Top {top_n} areas de conocimiento destino de {nivel}"
         es_horizontal = False
-        nivel_query = "Todos"
+        nivel_query = nivel
+    else:
+        dimension = "tipo_inst_1"
+        titulo = f"Distribución por Tipo de Institución de {nivel}"
+        es_horizontal = False
+        nivel_query = nivel
+    
 
-    # Llamada a la query unificada (la que creamos en el paso anterior)
+    # Llamada a la query incluyendo el nuevo filtro de edad
     df = get_top_destinos_filtrado(
         rango_anios=rango,
         tipo_poblacion=poblacion,
@@ -306,10 +357,39 @@ def update_destino_unificado(tab_activa, rango, poblacion, jornada, genero, top_
         nivel=nivel_query,
         jornada=jornada,
         genero=genero,
+        rango_edad=rango_edad,
         top_n=top_n
     )
 
-    # Generación del gráfico usando tu función de plots
-    # Si es Institución o Carrera -> Barras Horizontales
-    # Si es Tipo Inst -> Pie Chart
     return crear_grafico_top_destinos(df, titulo, es_horizontal=es_horizontal)
+
+@callback(
+    Output('grafico-trayectorias-pictograma', 'figure'),
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-poblacion-ex-alumnos', 'value'),
+     Input('radio-jornada-desertores', 'value'),
+     Input('radio-genero-desertores', 'value'),
+     Input('dropdown-edad-ex-alumnos', 'value')]
+)
+def update_pictograma(rango_anios, poblacion, jornada, genero, rango_edad):
+    df = get_rutas_academicas(
+        rango_anios=rango_anios, 
+        tipo_poblacion=poblacion, 
+        jornada=jornada, 
+        genero=genero, 
+        rango_edad=rango_edad
+    )
+    
+    return crear_pictograma_trayectoria(df, "Mapa de Trayectorias Académicas")
+
+@callback(
+    Output('grafico-continuidad-estudios', 'figure'),
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-jornada-desertores', 'value'),
+     Input('radio-genero-desertores', 'value'),
+     Input('dropdown-edad-ex-alumnos', 'value')]
+)
+def update_continuidad(rango, jornada, genero, edad):
+    # Solo titulados para este gráfico
+    df = get_continuidad_estudios(rango, jornada, genero, edad)
+    return crear_pictograma_continuidad(df, "Titulados que siguen estudiando vs No")

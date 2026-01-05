@@ -52,7 +52,7 @@ layout = dbc.Container([
                 dcc.RangeSlider(
                     id='slider-años-desertores',
                     min=2007, max=2025, step=1,
-                    value=[2018, 2024],
+                    value=[2007, 2007],
                     marks={i: str(i) for i in range(2007, 2026, 3)},
                     className="mb-4"
                 ),
