@@ -156,7 +156,8 @@ layout = dbc.Container([
                         dbc.CardHeader([
                             html.I(className="fas fa-exclamation me-2"),
                             "Reingreso inmediato"
-                        ], className="fw-bold bg-primary text-white"),
+                        ], style={"background-color": "#162f8a"},
+                        className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Loading(
                                 id="loading-ingresos",
@@ -172,7 +173,8 @@ layout = dbc.Container([
                         dbc.CardHeader([
                             html.I(className="fas fa-briefcase me-2"),
                             "Reingreso máximo"
-                        ], className="fw-bold bg-primary text-white"),
+                        ], style={"background-color": "#162f8a"},
+                        className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Loading(
                                 id="loading-ingresos",
@@ -207,7 +209,8 @@ layout = dbc.Container([
                                     ),
                                 ], width=8, className="text-end")
                             ])
-                        ], className="fw-bold bg-primary text-white"),
+                        ], style={"background-color": "#162f8a"},
+                        className="fw-bold text-white"),
                         dbc.CardBody([
                             # Sistema de Pestañas para elegir qué gráfico ver
                             dbc.Tabs([
@@ -225,6 +228,43 @@ layout = dbc.Container([
                     ], className="shadow-sm mb-4")
                 ], width=12)
             ]),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            dbc.Row([
+                                dbc.Col([
+                                    html.I(className="fas fa-history me-2"),
+                                    "Tiempo Transcurrido para Reingreso"
+                                ], width=6, className="align-self-center"),
+                                dbc.Col([
+                                    html.Span("Nivel: ", className="small me-2"),
+                                    dbc.Select(
+                                        id="selector-nivel-demora", # ID único para este gráfico
+                                        options=[
+                                            {"label": "Todos", "value": "Todos"},
+                                            {"label": "Pregrado", "value": "Pregrado"},
+                                            {"label": "Postítulo", "value": "Postítulo"},
+                                            {"label": "Postgrado", "value": "Postgrado"},
+                                        ],
+                                        value="Todos", size="sm",
+                                        style={"width": "140px", "display": "inline-block"}
+                                    ),
+                                ], width=6, className="text-end")
+                            ])
+                        ], style={"background-color": "#162f8a"},
+                        className="fw-bold text-white"),
+                        dbc.CardBody([
+                            dcc.Loading(
+                                id="loading-demora",
+                                type="circle",
+                                children=dcc.Graph(id='grafico-demora-reingreso', style={"height": "450px"}),
+                                color="#FF6600"
+                            )
+                        ])
+                    ], className="shadow-sm mb-4")
+                ], width=12) 
+            ]),
 
             dbc.Row([
                 dbc.Col([
@@ -233,7 +273,8 @@ layout = dbc.Container([
                             dbc.Row([
                                 dbc.Col("Trayectoria de ex estudiantes de ECAS", className="align-self center"),
                             ])
-                        ], className="fw-bold bg-primary text-white"),
+                        ], style={"background-color": "#162f8a"},
+                        className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Loading(
                                 id="loading-trayectoria",
@@ -246,7 +287,7 @@ layout = dbc.Container([
                 ], width= 6),
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader("Continuidad de Estudios (Titulados)", className="fw-bold bg-primary text-white"),
+                        dbc.CardHeader("Continuidad de Estudios (Titulados)", style={"background-color": "#162f8a"}, className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Graph(id='grafico-continuidad-estudios')
                         ])
@@ -362,6 +403,28 @@ def update_destino_unificado(tab_activa, rango, poblacion, jornada, genero, top_
     )
 
     return crear_grafico_top_destinos(df, titulo, es_horizontal=es_horizontal)
+
+@callback(
+    Output('grafico-demora-reingreso', 'figure'),
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-poblacion-ex-alumnos', 'value'),
+     Input('selector-nivel-demora', 'value'), 
+     Input('radio-jornada-desertores', 'value'),
+     Input('radio-genero-desertores', 'value'),
+     Input('dropdown-edad-ex-alumnos', 'value')]
+)
+def update_grafico_demora(rango, poblacion, nivel, jornada, genero, edad):
+
+    df = get_demora_reingreso(
+        rango_anios=rango,
+        tipo_poblacion=poblacion,
+        nivel=nivel, # Se pasa el valor seleccionado (Todos, Pregrado, etc.)
+        jornada=jornada,
+        genero=genero,
+        rango_edad=edad
+    )
+    
+    return crear_grafico_demora_reingreso(df, poblacion)
 
 @callback(
     Output('grafico-trayectorias-pictograma', 'figure'),

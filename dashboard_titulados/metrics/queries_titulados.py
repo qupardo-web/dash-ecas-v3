@@ -29,7 +29,7 @@ def get_kpis_cabecera(rango_anios, jornada="Todas", genero="Todos", rango_edad="
     sql_desertores = f"SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max {filtro_j_des} {filtro_g} {filtro_e}"
 
     # 3. Universo Total de Cohorte
-    sql_cohorte = f"SELECT COUNT(DISTINCT mrun) FROM tabla_dashboard_permanencia WHERE cohorte BETWEEN :anio_min AND :anio_max {filtro_j} {filtro_g} {filtro_e} AND cod_inst=104"
+    sql_cohorte = f"SELECT COUNT(DISTINCT mrun) FROM tabla_matriculas_competencia_unificada WHERE cohorte BETWEEN :anio_min AND :anio_max {filtro_j} {filtro_g} {filtro_e} AND cod_inst=104"
 
     with db_engine.connect() as conn:
         total_tit = conn.execute(text(sql_titulados), params).scalar() or 0

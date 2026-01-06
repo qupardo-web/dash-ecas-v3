@@ -2,7 +2,6 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, callback, Output, Input, State
 from dashboard_desertores.metrics.queries_desertores import *
-from dashboard_desertores.metrics.metrics_desertores import *
 from dashboard_desertores.graphics.graphics import *
 import pandas as pd
 import numpy as np
@@ -312,12 +311,13 @@ def sync_survival_dropdown(options_globales, valor_actual):
     [Output('selector-instituciones-competencia', 'options'),
      Output('selector-instituciones-competencia', 'value')],
     [Input('radio-jornada-desertores', 'value'),
-     Input('slider-top-n-desertores', 'value')]
+     Input('slider-top-n-desertores', 'value')],
+    [State('selector-instituciones-competencia', 'value')] # <-- PASO 1: Leer el valor actual
 )
-def actualizar_opciones_selector(jornada, top_n):
-    # Nombre exacto de la institución según tu base de datos
+def actualizar_opciones_selector(jornada, top_n, valor_seleccionado_actual):
     NOMBRE_ECAS = "IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO"
 
+    # Obtenemos el nuevo ranking según la jornada seleccionada
     df_ranking = get_ingresos_competencia_parametrizado(
         top_n=top_n, 
         anio_min=2007, 
@@ -332,11 +332,17 @@ def actualizar_opciones_selector(jornada, top_n):
     nombres_competencia = [n for n in df_ranking['nomb_inst'].unique() 
                           if NOMBRE_ECAS not in n.upper()]
     
+    # Construimos las nuevas opciones
     options = [{'label': nombre, 'value': nombre} for nombre in nombres_competencia]
-    
     options.insert(0, {'label': NOMBRE_ECAS, 'value': NOMBRE_ECAS})
     
-    return options, []
+    if not valor_seleccionado_actual:
+        return options, []
+    
+    nuevas_opciones_values = [opt['value'] for opt in options]
+    valor_persistente = [v for v in valor_seleccionado_actual if v in nuevas_opciones_values]
+    
+    return options, valor_persistente
 
 @callback(
     [Output('grafico-ingresos-competencia', 'figure'),
@@ -427,7 +433,7 @@ def update_bottom_section_reactive(rango, inst_surv, dim_fuga, jornada, genero):
             rango_anios=rango, 
             jornada=jornada, 
             genero=genero, 
-            top_n=5
+            top_n=6
         )
         figs_fuga.append(create_fuga_pie_chart(df_f, titulos[i-1]))
 

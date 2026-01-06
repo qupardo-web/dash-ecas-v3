@@ -18,7 +18,7 @@ def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=202
     sql_query = f"""
     WITH base AS (
         SELECT cohorte, cod_inst, nomb_inst, COUNT(DISTINCT mrun) AS total_ingresos
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cohorte BETWEEN :anio_min AND :anio_max
         {filtro_jornada}
         {filtro_genero}
@@ -64,11 +64,11 @@ def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: None
     if filtro_genero: params["genero"] = genero
 
     sql_query = f"""
-    WITH universo_cohortes AS (
-        -- Definimos quiénes entraron en la cohorte X con la jornada seleccionada
+        WITH universo_cohortes AS (
         SELECT DISTINCT mrun, cod_inst, nomb_inst, cohorte
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cohorte BETWEEN :anio_min AND :anio_max
+        AND periodo = cohorte
         {filtro_jornada_cohorte}
         {filtro_genero}
     ),
@@ -76,7 +76,7 @@ def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: None
         -- Buscamos si el alumno está matriculado el año siguiente en la institución
         -- NOTA: AQUÍ NO FILTRAMOS POR JORNADA para capturar cambios de jornada
         SELECT DISTINCT mrun, cod_inst, periodo
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE periodo BETWEEN :anio_min + 1 AND :anio_max_ext
     )
     SELECT 
@@ -120,14 +120,14 @@ def get_distribucion_cambio_jornada_ecas(anio_min, anio_max, jornada_filtro=None
     sql_query = f"""
     WITH cohorte_inicial AS (
         SELECT mrun, jornada AS jornada_origen, cohorte, genero
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cod_inst = 104
           AND cohorte BETWEEN :anio_min AND :anio_max
           AND cohorte = periodo
     ),
     seguimiento_n1 AS (
         SELECT mrun, jornada AS jornada_destino, periodo
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cod_inst = 104
           AND periodo BETWEEN :anio_min + 1 AND :anio_max + 1
     )
@@ -195,7 +195,7 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
     sql_query = f"""
     WITH base_cohorte AS (
         SELECT nomb_inst, cohorte, COUNT(DISTINCT mrun) as total_inicial
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cohorte BETWEEN :anio_min AND :anio_max 
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
@@ -206,7 +206,7 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         SELECT 
             nomb_inst, cohorte, (periodo - cohorte) AS t_anios,
             COUNT(DISTINCT mrun) AS n_matriculados
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cohorte BETWEEN :anio_min AND :anio_max 
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
@@ -221,7 +221,6 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         WHERE cohorte BETWEEN :anio_min AND :anio_max 
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
-          {filtro_jornada}
         GROUP BY anios_para_titularse, nomb_inst, cohorte
     ),
     calculos_por_cohorte AS (
@@ -250,18 +249,22 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
 def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos"):
 
     condiciones = [f"anio_ingreso_ecas BETWEEN {rango_anios[0]} AND {rango_anios[1]}"]
+    condiciones_externas = [f"anio_ingreso_ecas BETWEEN {rango_anios[0]} AND {rango_anios[1]}"]
     
     if jornada != "Todas":
         condiciones.append(f"jornada_ecas = '{jornada}'")
+        condiciones_externas.append(f"jornada_titulacion = '{jornada}'")
     if genero != "Todos":
         condiciones.append(f"genero = '{genero}'")
+        condiciones_externas.append(f"genero = '{genero}'")
         
-    where_clause = " AND ".join(condiciones)
+    where_clause_desertores = " AND ".join(condiciones)
+    where_clause_titulados_externos = " AND ".join(condiciones_externas)
 
     query = f"""
     SELECT 
-        (SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE {where_clause}) as total_desertores,
-        (SELECT COUNT(DISTINCT mrun) FROM tabla_titulados_externos_desertores WHERE {where_clause}) as total_titulados_ext
+        (SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE {where_clause_desertores}) as total_desertores,
+        (SELECT COUNT(DISTINCT mrun) FROM tabla_titulados_externos_desertores WHERE {where_clause_titulados_externos}) as total_titulados_ext
     """
     
     df = pd.read_sql(query, db_engine)
@@ -275,7 +278,7 @@ def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos")
 
 #print(get_metrica_titulacion_externa(rango_anios=[2007,2025]))
 
-def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, jornada: str = "Todas", genero: str = "Todos", top_n: int = 5):
+def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, jornada: str = "Todas", genero: str = "Todos", top_n: int = 10):
     """
     Obtiene el ranking de destinos (institución, carrera o área) utilizando SQL.
     """
@@ -401,7 +404,7 @@ def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
     WITH estudiantes_captados AS (
         -- Estudiantes que entraron a ECAS en el rango pero tenían matrícula previa en otro lado
         SELECT DISTINCT p.mrun, p.genero, p.jornada, p.cohorte
-        FROM tabla_dashboard_permanencia p
+        FROM tabla_matriculas_competencia_unificada p
         WHERE p.cod_inst = 104
           AND p.cohorte BETWEEN :anio_min AND :anio_max
           {filtro_jornada}

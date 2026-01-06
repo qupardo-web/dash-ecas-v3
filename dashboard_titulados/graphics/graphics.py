@@ -209,3 +209,64 @@ def crear_pictograma_continuidad(df, titulo):
         plot_bgcolor='white'
     )
     return fig
+
+def crear_grafico_demora_reingreso(df, tipo_poblacion):
+    if df is None or df.empty:
+        return go.Figure().update_layout(
+            annotations=[dict(text="Sin datos para los filtros seleccionados", showarrow=False)]
+        )
+
+    # 1. Agrupamos los años de espera superiores a 5 para evitar demasiadas categorías
+    # Esto limpia las etiquetas minúsculas de 0.03% que ensucian el gráfico
+    df = df.copy()
+    df['grupo_demora'] = df['demora_anios'].apply(
+        lambda x: f"Año {int(x)}" if 0 < x <= 5 else ("Mismo año" if x == 0 else "6+ Años")
+    )
+
+    # 2. Consolidar cantidades por el nuevo grupo
+    df_plot = df.groupby('grupo_demora')['cantidad_alumnos'].sum().reset_index()
+    
+    # Ordenar lógicamente: Mismo año, Año 1... Año 5, 6+ Años
+    orden_logico = ["Mismo año", "Año 1", "Año 2", "Año 3", "Año 4", "Año 5", "6+ Años"]
+    df_plot['grupo_demora'] = pd.Categorical(df_plot['grupo_demora'], categories=orden_logico, ordered=True)
+    df_plot = df_plot.sort_values('grupo_demora')
+    
+    total_alumnos = df_plot['cantidad_alumnos'].sum()
+
+    fig = go.Figure(data=[go.Pie(
+        labels=df_plot['grupo_demora'],
+        values=df_plot['cantidad_alumnos'],
+        hole=.6,
+        textinfo='percent', 
+        # Forzamos a que el texto esté adentro y ocultamos etiquetas amontonadas
+        textposition='inside',
+        insidetextorientation='horizontal',
+        marker=dict(colors=['#162f8a', '#FFB563', '#A663CC', '#F88DAD', '#F9E9EC', '#FAC748', '#8390FA']),
+        hoverinfo='label+value+percent'
+    )])
+
+    fig.update_layout(
+        title=dict(
+            text=f"<b>Distribución de Tiempo de Espera ({tipo_poblacion})</b><br><span style='font-size:12px;color:gray'>Año 1 corresponde al año inmediato posterior a la titulación/desercion</span>",
+            x=0.5, xanchor='center'
+        ),
+        annotations=[dict(
+            text=f'Total<br><b>{total_alumnos:,}</b>'.replace(',', '.'),
+            x=0.5, y=0.5,
+            font_size=20, # Un poco más grande para destacar
+            showarrow=False
+        )],
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.15, # Bajamos la leyenda un poco más
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11)
+        ),
+        # Aumentamos el margen inferior (b) para que la leyenda no se corte
+        margin=dict(t=60, b=120, l=20, r=20)
+    )
+
+    return fig

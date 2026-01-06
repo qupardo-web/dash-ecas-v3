@@ -17,7 +17,7 @@ def get_movilidad_acreditacion_estricta(anio_seleccionado, jornada="Todas", tipo
     sql_query = f"""
     WITH Acred_ECAS AS (
         SELECT DISTINCT periodo, acre_inst_anio AS acred_ecas_periodo
-        FROM tabla_dashboard_permanencia WHERE cod_inst = 104
+        FROM tabla_matriculas_competencia_unificada WHERE cod_inst = 104
     ),
     PrimerIngresoPost AS (
         SELECT 
@@ -92,7 +92,7 @@ def get_metrics_acreditacion(periodo_seleccionado, jornada_filtro="Todas"):
     ),
     UltimaJornada AS (
         SELECT mrun, jornada, periodo
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cod_inst = 104 AND periodo = :periodo_actual
     ),
     Retencion AS (
@@ -101,7 +101,7 @@ def get_metrics_acreditacion(periodo_seleccionado, jornada_filtro="Todas"):
             COUNT(DISTINCT t2.mrun) as total_permanecen
         FROM UltimaJornada uj
         LEFT JOIN Titulados_ECAS tit ON uj.mrun = tit.mrun
-        LEFT JOIN tabla_dashboard_permanencia t2 
+        LEFT JOIN tabla_matriculas_competencia_unificada t2 
             ON uj.mrun = t2.mrun 
             AND t2.periodo = :periodo_siguiente
             AND t2.cod_inst = 104
@@ -120,7 +120,7 @@ def get_metrics_acreditacion(periodo_seleccionado, jornada_filtro="Todas"):
     Acred AS (
         -- Seleccionamos también el estado cualitativo acreditada_inst
         SELECT TOP 2 acre_inst_anio, acreditada_inst, periodo
-        FROM tabla_dashboard_permanencia
+        FROM tabla_matriculas_competencia_unificada
         WHERE cod_inst = 104 
           AND periodo IN (:periodo_actual, :periodo_anterior)
         ORDER BY periodo DESC
@@ -150,7 +150,7 @@ def get_detalle_instituciones_fuga(periodo_sel, categoria_sel, jornada="Todas"):
     sql_query = f"""
     WITH Acred_ECAS AS (
         SELECT DISTINCT periodo, acre_inst_anio AS acred_ecas_periodo
-        FROM tabla_dashboard_permanencia WHERE cod_inst = 104
+        FROM tabla_matriculas_competencia_unificada WHERE cod_inst = 104
     ),
     PrimerIngresoPost AS (
         SELECT 
