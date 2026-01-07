@@ -249,22 +249,18 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
 def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos"):
 
     condiciones = [f"anio_ingreso_ecas BETWEEN {rango_anios[0]} AND {rango_anios[1]}"]
-    condiciones_externas = [f"anio_ingreso_ecas BETWEEN {rango_anios[0]} AND {rango_anios[1]}"]
     
     if jornada != "Todas":
         condiciones.append(f"jornada_ecas = '{jornada}'")
-        condiciones_externas.append(f"jornada_titulacion = '{jornada}'")
     if genero != "Todos":
         condiciones.append(f"genero = '{genero}'")
-        condiciones_externas.append(f"genero = '{genero}'")
         
-    where_clause_desertores = " AND ".join(condiciones)
-    where_clause_titulados_externos = " AND ".join(condiciones_externas)
+    where_clause = " AND ".join(condiciones)
 
     query = f"""
     SELECT 
-        (SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE {where_clause_desertores}) as total_desertores,
-        (SELECT COUNT(DISTINCT mrun) FROM tabla_titulados_externos_desertores WHERE {where_clause_titulados_externos}) as total_titulados_ext
+        (SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE {where_clause}) as total_desertores,
+        (SELECT COUNT(DISTINCT mrun) FROM tabla_titulados_externos_desertores WHERE {where_clause}) as total_titulados_ext
     """
     
     df = pd.read_sql(query, db_engine)
@@ -298,15 +294,16 @@ def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, j
 
     sql_query = f"""
     WITH primer_reingreso AS (
-        -- Identificamos el destino N específico para cada estudiante cronológicamente
-        SELECT 
-            mrun,
-            {columna} as destino,
-            ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as rn
-        FROM tabla_fuga_detallada_desertores
-        WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
-        {filtro_jornada}
-        {filtro_genero}
+    SELECT 
+        mrun,
+        {columna} as destino,
+        -- Usamos MIN para quedarnos con el primer año que pisó ese destino
+        ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY MIN(anio_matricula_post) ASC) as rn
+    FROM tabla_fuga_detallada_desertores
+    WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
+    {filtro_jornada}
+    {filtro_genero}
+    GROUP BY mrun, {columna} -- Esto colapsa los 3 años en la misma carrera a 1 sola fila
     )
     SELECT TOP (:top_n)
         destino as {columna},

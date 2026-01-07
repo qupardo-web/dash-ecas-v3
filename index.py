@@ -4,6 +4,7 @@ from dash import dcc, html, Input, Output
 from dashboard_desertores.pages.dashboard_desertores import layout as layout_desertores
 from dashboard_titulados.pages.dashboard_titulados import layout as layout_titulados
 from dashboard_acreditacion.pages.dashboard_acreditacion import layout as layout_acreditacion
+from dashboard_transicion.pages.dashboard_transicion import layout as layout_transicion
 
 # Inicialización de la App
 app = dash.Dash(
@@ -18,6 +19,7 @@ navbar = dbc.NavbarSimple(
         dbc.NavItem(dbc.NavLink("Deserción", href="/desertores")),
         dbc.NavItem(dbc.NavLink("Titulados", href="/titulados")),
         dbc.NavItem(dbc.NavLink("Acreditacion", href="/acreditacion")),
+        dbc.NavItem(dbc.NavLink("Transición", href="/transicion")),
         dbc.DropdownMenu(
             children=[
                 dbc.DropdownMenuItem("Más Análisis", header=True),
@@ -56,6 +58,8 @@ def display_page(pathname):
         return layout_titulados
     elif pathname == '/acreditacion':
         return layout_acreditacion
+    elif pathname == '/transicion':
+        return layout_transicion
     elif pathname == '/' or pathname == '':
         return html.Div([
             dbc.Container([

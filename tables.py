@@ -347,7 +347,7 @@ def actualizar_tabla_matriculas():
     WHERE V.anio_ing_carr_ori BETWEEN 2007 AND 2025
     AND V.region_sede = 'Metropolitana'
     AND (V.nomb_carrera LIKE 'AUDITOR%' OR V.nomb_carrera LIKE 'CONTA%')
-    AND (V.cod_inst = 104 OR V.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica'))
+    AND (V.cod_inst = 104 OR V.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica') OR v.nomb_inst = 'UNIVERSIDAD SANTO TOMAS')
     AND V.dur_total_carr BETWEEN 8 AND 10;
 
     -- 3. Recreación de índices para optimizar el Dashboard
@@ -414,7 +414,7 @@ def actualizar_tabla_titulados():
     AND T.anio_ing_carr_ori BETWEEN 2007 AND 2025
     AND T.region_sede = 'Metropolitana'
     AND (T.nomb_carrera LIKE 'AUDITOR%' OR T.nomb_carrera LIKE 'CONTA%')
-    AND (T.cod_inst = 104 OR T.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica'))
+    AND (T.cod_inst = 104 OR T.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica') OR T.nomb_inst LIKE 'UNIVERSIDAD SANTO TOMAS')
     AND T.anio_ing_carr_ori IS NOT NULL
     AND T.dur_total_carr BETWEEN 8 AND 10;
 
@@ -584,7 +584,7 @@ def actualizar_tabla_trayectoria_titulados():
 # Ejecutar la actualización de tablas fisicas
 # actualizar_tabla_matriculas()
 # actualizar_tabla_egresados()
-# actualizar_tabla_titulados()
+#actualizar_tabla_titulados()
 # actualizar_tabla_trayectoria_titulados()
 # actualizar_tabla_origenes_totales()
 # actualizar_tabla_titulados_desertores()
