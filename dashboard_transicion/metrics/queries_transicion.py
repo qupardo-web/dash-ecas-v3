@@ -172,21 +172,32 @@ def get_distribucion_dependencia_rango(cohorte_range, cod_inst, genero="Todos", 
         
     return df
 
-print(get_distribucion_dependencia_rango(cohorte_range=[2007,2007], cod_inst=104))
+#print(get_distribucion_dependencia_rango(cohorte_range=[2007,2007], cod_inst=104))
 
-print(get_distribucion_dependencia_cohorte(cohorte_sel=2007, cod_inst=104))
+def get_titulados_por_dependencia_rango(cohorte_range, cod_inst, genero="Todos", jornada="Todas", anio_titulacion_sel=None):
+    """
+    cohorte_range: puede ser int (2009) o list [2007, 2010]
+    """
+    # 1. Configuración de Rango
+    if isinstance(cohorte_range, list):
+        c_inicio, c_fin = cohorte_range[0], cohorte_range[1]
+        condicion_cohorte = "BETWEEN :c_inicio AND :c_fin"
+        num_anios = (c_fin - c_inicio) + 1
+    else:
+        c_inicio, c_fin = cohorte_range, cohorte_range
+        condicion_cohorte = "= :c_inicio"
+        num_anios = 1
 
-def get_titulados_por_dependencia_cohorte(cohorte_sel, cod_inst, genero="Todos", jornada="Todas", anio_titulacion_sel=None):
-    # Parámetros base
     params = {
-        "cohorte": cohorte_sel,
+        "c_inicio": c_inicio,
+        "c_fin": c_fin,
         "cod_inst": cod_inst,
         "genero": genero,
         "jornada": jornada
     }
     
-    # Filtros dinámicos para la subquery de titulados
-    filtro_anio = "AND anio_titulacion = :anio_tit" if anio_titulacion_sel else ""
+    # Filtros dinámicos
+    filtro_anio_tit = "AND anio_titulacion = :anio_tit" if anio_titulacion_sel else ""
     if anio_titulacion_sel: params["anio_tit"] = anio_titulacion_sel
     
     filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
@@ -194,7 +205,7 @@ def get_titulados_por_dependencia_cohorte(cohorte_sel, cod_inst, genero="Todos",
     
     sql_query = text(f"""
     WITH CohorteEstudiantes AS (
-        -- Identificamos la cohorte real (primer ingreso) en la institución
+        -- Identificamos el primer ingreso real para filtrar por rango de cohorte
         SELECT 
             mrun, 
             MIN(cohorte) as anio_ingreso
@@ -203,23 +214,20 @@ def get_titulados_por_dependencia_cohorte(cohorte_sel, cod_inst, genero="Todos",
         GROUP BY mrun
     ),
     UltimaInfoTitulado AS (
-        -- Obtenemos el último registro de titulación para filtrar jornada/genero correctamente
+        -- Filtramos los titulados por los criterios del Dashboard
         SELECT * FROM (
             SELECT 
                 mrun,
-                genero,
-                jornada,
-                anio_titulacion,
                 ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_titulacion DESC) as rn
             FROM tabla_dashboard_titulados
             WHERE cod_inst = :cod_inst
-            {filtro_anio}
+            {filtro_anio_tit}
             {filtro_genero}
             {filtro_jornada}
         ) t_sub WHERE rn = 1
     ),
     UltimoEgresoMedia AS (
-        -- Consistencia para educación media (evitar duplicados de egreso)
+        -- Datos de origen escolar únicos
         SELECT * FROM (
             SELECT 
                 mrun,
@@ -237,83 +245,100 @@ def get_titulados_por_dependencia_cohorte(cohorte_sel, cod_inst, genero="Todos",
             WHEN e.cod_dep_agrupado = 5 THEN 'SLEP'
             ELSE 'Otro / Sin Información'
         END AS tipo_establecimiento,
-        COUNT(DISTINCT t.mrun) AS cantidad_titulados,
-        ROUND(CAST(COUNT(DISTINCT t.mrun) AS FLOAT) * 100 / 
-            NULLIF(SUM(COUNT(DISTINCT t.mrun)) OVER(), 0), 1) as porcentaje
+        COUNT(DISTINCT t.mrun) AS total_titulados_periodo
     FROM UltimaInfoTitulado t
     INNER JOIN CohorteEstudiantes c ON t.mrun = c.mrun
     INNER JOIN UltimoEgresoMedia e ON t.mrun = e.mrun
-    WHERE c.anio_ingreso = :cohorte
+    WHERE c.anio_ingreso {condicion_cohorte}
     GROUP BY e.cod_dep_agrupado
-    ORDER BY cantidad_titulados DESC
+    ORDER BY total_titulados_periodo DESC
     """)
     
     df = pd.read_sql(sql_query, db_engine, params=params)
+
+    if not df.empty:
+        # 2. Cálculos Estadísticos para el Rango
+        df['promedio_anual_titulados'] = (df['total_titulados_periodo'] / num_anios).round(1)
+        
+        total_total = df['total_titulados_periodo'].sum()
+        df['porcentaje_del_periodo'] = (df['total_titulados_periodo'] / total_total * 100).round(1)
+        
     return df
 
-#print(get_titulados_por_dependencia_cohorte(cohorte_sel=2007, cod_inst=104))
+#print(get_titulados_por_dependencia_rango(cohorte_range=[2007,2025], cod_inst=104))
 
-def get_demora_ingreso_superior(cohorte_sel, cod_inst, jornada="Todas", carrera="Todas", genero="Todos"):
+def get_demora_ingreso_total(cohorte_range, cod_inst, carrera="Todas", genero="Todos", jornada_filtro="Todas"):
+    if isinstance(cohorte_range, list):
+        c_inicio, c_fin = cohorte_range[0], cohorte_range[1]
+        condicion_cohorte = "BETWEEN :c_inicio AND :c_fin"
+    else:
+        c_inicio, c_fin = cohorte_range, cohorte_range
+        condicion_cohorte = "= :c_inicio"
+
     params = {
-        "cohorte": cohorte_sel,
+        "c_inicio": c_inicio,
+        "c_fin": c_fin,
         "cod_inst": cod_inst,
-        "jornada": jornada,
         "carrera": carrera,
         "genero": genero
     }
 
-    # Filtros dinámicos
-    filtro_jornada = "AND jornada = :jornada" if jornada != "Todas" else ""
-    filtro_carrera = "AND nomb_carrera = :carrera" if carrera != "Todas" else ""
-    filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
+    filtro_carrera = "AND p.nomb_carrera = :carrera" if carrera != "Todas" else ""
+    filtro_genero = "AND p.genero = :genero" if genero != "Todos" else ""
     
     sql_query = text(f"""
-    WITH PrimerIngreso AS (
-        -- Identificamos la primera matrícula real en la institución
-        SELECT 
-            mrun, 
-            MIN(cohorte) as anio_ingreso
-        FROM tabla_matriculas_competencia_unificada
-        WHERE cod_inst = :cod_inst
-          {filtro_jornada}
-          {filtro_carrera}
-          {filtro_genero}
-        GROUP BY mrun
-    ),
-    UltimoEgresoMedia AS (
-        -- Obtenemos el ÚLTIMO año de egreso registrado (periodo) para cada alumno
+    WITH PrimerIngresoGlobal AS (
         SELECT * FROM (
             SELECT 
-                mrun,
-                periodo,
+                mrun, 
+                cohorte as anio_ingreso,
+                jornada,
+                nomb_carrera,
+                genero,
+                ROW_NUMBER() OVER (
+                    PARTITION BY mrun 
+                    ORDER BY cohorte ASC, CASE WHEN jornada IS NULL THEN 1 ELSE 0 END ASC, jornada DESC
+                ) as rn_ingreso
+            FROM tabla_matriculas_competencia_unificada
+            WHERE cod_inst = :cod_inst
+        ) t WHERE rn_ingreso = 1
+    ),
+    UltimoEgresoMedia AS (
+        SELECT * FROM (
+            SELECT 
+                mrun, periodo,
                 ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn
             FROM tabla_alumnos_egresados_unificada
         ) e_sub WHERE rn = 1
-    ),
-    CalculoDemora AS (
-        SELECT 
-            p.mrun,
-            p.anio_ingreso,
-            -- Diferencia entre ingreso IES y egreso Media
-            (p.anio_ingreso - CAST(e.periodo AS INT)) as anios_demora
-        FROM PrimerIngreso p
-        INNER JOIN UltimoEgresoMedia e ON p.mrun = e.mrun
-        WHERE p.anio_ingreso = :cohorte
     )
     SELECT 
-        anios_demora,
-        COUNT(mrun) as cantidad_alumnos,
-        ROUND(CAST(COUNT(mrun) AS FLOAT) * 100 / SUM(COUNT(mrun)) OVER(), 2) as porcentaje
-    FROM CalculoDemora
-    WHERE anios_demora >= 0 
-    GROUP BY anios_demora
-    ORDER BY anios_demora ASC
+        p.jornada,
+        (p.anio_ingreso - CAST(e.periodo AS INT)) as anios_demora,
+        p.mrun
+    FROM PrimerIngresoGlobal p
+    INNER JOIN UltimoEgresoMedia e ON p.mrun = e.mrun
+    WHERE p.anio_ingreso {condicion_cohorte}
+      {filtro_carrera}
+      {filtro_genero}
     """)
     
-    df = pd.read_sql(sql_query, db_engine, params=params)
-    return df
+    df_raw = pd.read_sql(sql_query, db_engine, params=params)
 
-#print(get_demora_ingreso_superior(cohorte_sel=2007, cod_inst=104))
+    df = df_raw.copy()
+
+    if jornada_filtro != "Todas":
+        df = df[df['jornada'] == jornada_filtro]
+
+    df = df[df['anios_demora'] >= 1]
+    
+    # Agrupar y contar
+    resumen = df.groupby('anios_demora').size().reset_index(name='total_alumnos_periodo')
+    
+    # Cálculos adicionales
+    total = resumen['total_alumnos_periodo'].sum()
+    resumen['porcentaje'] = (resumen['total_alumnos_periodo'] / total * 100).round(2)
+    
+    return resumen
 
 #KPI para analizar si los alumnos con un buen rendimiento academico en su educación media
 #son más o menos probables de desertar al primer año.
