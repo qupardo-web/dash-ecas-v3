@@ -149,7 +149,7 @@ consulta_egresados = """
     cod_depe as cod_dependencia,
     cod_depe2 as cod_dep_agrupado,
     rural_rbd as indice_rural,
-    prom_notas_alu,
+    CAST(REPLACE(prom_notas_alu, ',', '.') AS FLOAT) as prom_notas_alu,
     origen as origen_dato,
     ense_completa,
     marca_egreso

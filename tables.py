@@ -329,6 +329,8 @@ def actualizar_tabla_matriculas():
         V.cod_inst,
         V.jornada,
         V.region_sede,
+        V.dur_total_carr,
+        V.dur_estudio_carr,
         V.acreditada_carr,
         V.acreditada_inst,
         V.acre_inst_anio,
@@ -436,34 +438,30 @@ def actualizar_tabla_titulados():
 def actualizar_tabla_egresados():
 
     query_insert = text("""
+    -- 1. Eliminar la tabla si ya existe para recrearla
     IF OBJECT_ID('tabla_alumnos_egresados_unificada', 'U') IS NOT NULL
         DROP TABLE tabla_alumnos_egresados_unificada;
 
-    WITH EgresadosRanking AS (
-        SELECT 
-            e.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY e.mrun 
-                ORDER BY e.periodo DESC
-            ) as posicion
-        FROM vista_egresados_unificada e
-        WHERE EXISTS (
-            SELECT 1 
-            FROM tabla_matriculas_competencia_unificada p 
-            WHERE p.mrun = e.mrun
-        )
-    )
-    SELECT *
+    -- 2. Insertar todos los registros de egreso para alumnos que existen en la tabla de competencia
+    SELECT 
+        e.*
     INTO tabla_alumnos_egresados_unificada
-    FROM EgresadosRanking
-    WHERE posicion = 1;
+    FROM vista_egresados_unificada e
+    WHERE EXISTS (
+        SELECT 1 
+        FROM tabla_matriculas_competencia_unificada p 
+        WHERE p.mrun = e.mrun
+    );
+
+    -- 3. Opcional: Crear un índice para mejorar el rendimiento de los JOINs en los KPIs
+    CREATE INDEX idx_mrun_egresados_full ON tabla_alumnos_egresados_unificada (mrun);
     """)
 
     try:
         with db_engine.connect() as conn:
             conn.execute(query_insert)
             conn.commit()
-            print("Tabla actualizada con el registro más reciente por MRUN.")
+            print("Tabla actualizada con éxito. Se han importado todos los registros históricos por MRUN.")
     except Exception as e:
         print(f"Error al actualizar la tabla: {e}")
 
@@ -582,9 +580,9 @@ def actualizar_tabla_trayectoria_titulados():
 #poblar_tabla_abandono_fisica(db_engine, df_abandono_total)
 
 # Ejecutar la actualización de tablas fisicas
-# actualizar_tabla_matriculas()
-# actualizar_tabla_egresados()
+actualizar_tabla_matriculas()
+#actualizar_tabla_egresados()
 #actualizar_tabla_titulados()
-# actualizar_tabla_trayectoria_titulados()
-# actualizar_tabla_origenes_totales()
-# actualizar_tabla_titulados_desertores()
+#actualizar_tabla_trayectoria_titulados()
+#actualizar_tabla_origenes_totales()
+#actualizar_tabla_titulados_desertores()
