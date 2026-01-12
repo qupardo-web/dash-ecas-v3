@@ -384,14 +384,7 @@ def actualizar_tabla_titulados():
         CAST(T.cat_periodo AS INT) AS anio_titulacion,
         T.mrun,
         CAST(T.anio_ing_carr_ori AS INT) AS cohorte,
-        CASE
-            WHEN T.nombre_titulo_obtenido IN (
-                'TECNICO DE NIVEL SUPERIOR EN CONTABILIDAD',
-                'CONTADOR TECNICO DE NIVEL SUPERIOR'
-            ) THEN 'CONTADOR TECNICO DE NIVEL SUPERIOR'
-            WHEN T.nombre_titulo_obtenido IS NULL AND T.cod_inst = 104 THEN 'CONTADOR AUDITOR'
-            ELSE T.nombre_titulo_obtenido
-        END AS nomb_titulo,
+        T.nomb_titulo_obtenido as nomb_titulo,
         T.fecha_obtencion_titulo,
         T.cod_inst,
         T.nomb_inst,
@@ -410,12 +403,12 @@ def actualizar_tabla_titulados():
         END AS genero,
         (CAST(T.cat_periodo AS INT) - CAST(T.anio_ing_carr_ori AS INT)) AS anios_para_titularse
     INTO tabla_dashboard_titulados
-    FROM dbo.vista_titulados_unificada T
+    FROM dbo.vista_titulados_unificada_limpia T
     LEFT JOIN EdadIngreso E ON T.mrun = E.mrun AND E.rn = 1
     WHERE T.fecha_obtencion_titulo IS NOT NULL
     AND T.anio_ing_carr_ori BETWEEN 2007 AND 2025
     AND T.region_sede = 'Metropolitana'
-    AND (T.nomb_carrera LIKE 'AUDITOR%' OR T.nomb_carrera LIKE 'CONTA%')
+    AND (T.nomb_carrera LIKE '%AUDITOR%' OR T.nomb_carrera LIKE '%CONTA%')
     AND (T.cod_inst = 104 OR T.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica') OR T.nomb_inst LIKE 'UNIVERSIDAD SANTO TOMAS')
     AND T.anio_ing_carr_ori IS NOT NULL
     AND T.dur_total_carr BETWEEN 8 AND 10;
@@ -580,9 +573,9 @@ def actualizar_tabla_trayectoria_titulados():
 #poblar_tabla_abandono_fisica(db_engine, df_abandono_total)
 
 # Ejecutar la actualización de tablas fisicas
-actualizar_tabla_matriculas()
+#actualizar_tabla_matriculas()
 #actualizar_tabla_egresados()
-#actualizar_tabla_titulados()
+actualizar_tabla_titulados()
 #actualizar_tabla_trayectoria_titulados()
 #actualizar_tabla_origenes_totales()
 #actualizar_tabla_titulados_desertores()
