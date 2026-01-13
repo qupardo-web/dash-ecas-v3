@@ -26,19 +26,21 @@ def get_kpis_cabecera(rango_anios, jornada="Todas", genero="Todos", rango_edad="
     
     # 2. Total Desertores
     filtro_j_des = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
-    sql_desertores = f"SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max {filtro_j_des} {filtro_g} {filtro_e}"
+    sql_desertores = f"SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max AND inst_destino NOT LIKE 'IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO' {filtro_j_des} {filtro_g} {filtro_e}"
 
     # 3. Universo Total de Cohorte
     sql_cohorte = f"SELECT COUNT(DISTINCT mrun) FROM tabla_matriculas_competencia_unificada WHERE cohorte BETWEEN :anio_min AND :anio_max {filtro_j} {filtro_g} {filtro_e} AND cod_inst=104"
 
+    #4. Universo Total de abandono
+    filtro_j_abandono = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
+    sql_abandono =f"SELECT COUNT(DISTINCT mrun) FROM tabla_abandono_total_desertores WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max {filtro_j_abandono} {filtro_g} {filtro_e}"
     with db_engine.connect() as conn:
         total_tit = conn.execute(text(sql_titulados), params).scalar() or 0
         total_des = conn.execute(text(sql_desertores), params).scalar() or 0
         total_cohorte = conn.execute(text(sql_cohorte), params).scalar() or 0
+        total_abandono = conn.execute(text(sql_abandono), params).scalar() or 0
         
-    return total_cohorte, total_tit, total_des
-
-# print(get_kpis_cabecera(rango_anios=[2007, 2007]))
+    return total_cohorte, total_tit, total_des, total_abandono
 
 def get_nivel_post_salida(rango_anios, tipo_poblacion="Todos", criterio="Primero", jornada="Todas", genero="Todos", rango_edad="Todos"):
     params = {"anio_min": rango_anios[0], "anio_max": rango_anios[1]}
@@ -196,51 +198,70 @@ def get_demora_reingreso(rango_anios, tipo_poblacion="Todos", nivel="Todos", jor
 
 #print(get_demora_reingreso(rango_anios=[2007,2007], tipo_poblacion="Todos"))
 
-def get_rutas_academicas(rango_anios, tipo_poblacion="Todos", jornada="Todas", genero="Todos", rango_edad="Todos"):
-    params = {"anio_min": rango_anios[0], "anio_max": rango_anios[1]}
+def get_rutas_academicas_completas(rango_anios, tipo_poblacion="Titulados", jornada="Todas", genero="Todos", rango_edad="Todos"):
+    params = {"anio_min": rango_anios[0], "anio_max": rango_anios[1], "cod_inst": 104}
     
+    # Identificar la tabla maestra según la población (Igual que en continuidad)
+    if tipo_poblacion == "Titulados":
+        tabla_maestra = "tabla_dashboard_titulados"
+        tabla_eventos = "tabla_trayectoria_post_titulado"
+        col_jornada = "jornada"
+        col_cohorte = "cohorte"
+    else:
+        tabla_maestra = "tabla_fuga_detallada_desertores"
+        tabla_eventos = "tabla_fuga_detallada_desertores" # O la tabla de trayectoria de desertores
+        col_jornada = "jornada_ecas"
+        col_cohorte = "anio_ingreso_ecas"
+
     filtros = []
     if jornada != "Todas":
-        filtros.append("AND jornada_ecas = :jornada"); params["jornada"] = jornada
+        filtros.append(f"AND u.{col_jornada} = :jornada")
+        params["jornada"] = jornada
     if genero != "Todos":
-        filtros.append("AND genero = :genero"); params["genero"] = genero
+        filtros.append("AND u.genero = :genero")
+        params["genero"] = genero
     if rango_edad != "Todos":
-        filtros.append("AND rango_edad = :rango_edad"); params["rango_edad"] = rango_edad
+        filtros.append("AND u.rango_edad = :rango_edad")
+        params["rango_edad"] = rango_edad
     
     filtro_sql = " ".join(filtros)
 
-    if tipo_poblacion == "Todos":
-        subquery = "SELECT mrun, anio_matricula_post, nivel_estudio_post, inst_destino, anio_ingreso_ecas, genero, jornada_ecas, rango_edad FROM tabla_trayectoria_post_titulado UNION ALL SELECT mrun, anio_matricula_post, nivel_estudio_post, inst_destino, anio_ingreso_ecas, genero, jornada_ecas, rango_edad FROM tabla_fuga_detallada_desertores"
-    else:
-        tabla = "tabla_trayectoria_post_titulado" if tipo_poblacion == "Titulados" else "tabla_fuga_detallada_desertores"
-        subquery = f"SELECT * FROM {tabla}"
-
     sql_query = f"""
-    WITH universo AS ({subquery}),
-    eventos_ordenados AS (
-        SELECT mrun, anio_matricula_post, nivel_estudio_post, LAG(nivel_estudio_post) 
-        OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as nivel_anterior
-        FROM universo WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max 
-        AND inst_destino NOT LIKE 'IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO' {filtro_sql}
+    WITH UniversoMaestro AS (
+        SELECT mrun, {col_cohorte} as cohorte, {col_jornada} as jornada, genero, rango_edad 
+        FROM {tabla_maestra} u 
+        WHERE {"u.cod_inst = :cod_inst" if tipo_poblacion == "Titulados" else "1=1"}
     ),
-    eventos_sin_duplicados AS (
-        SELECT mrun, nivel_estudio_post, anio_matricula_post 
-        FROM eventos_ordenados WHERE nivel_anterior IS NULL OR nivel_anterior <> nivel_estudio_post
+    EventosPost AS (
+        -- IMPORTANTE: Para que cuadre con continuidad, NO filtramos ECAS aquí
+        -- a menos que la query de continuidad también lo haga.
+        SELECT mrun, anio_matricula_post, nivel_estudio_post 
+        FROM {tabla_eventos}
     ),
-    rutas_concatenadas AS (
+    Cadenas AS (
         SELECT mrun, 'Pregrado > ' + STRING_AGG(nivel_estudio_post, ' > ') 
-        WITHIN GROUP (ORDER BY anio_matricula_post ASC) as ruta_secuencial FROM eventos_sin_duplicados GROUP BY mrun
-    ),
-    final_total AS (
-        SELECT mrun, 'Pregrado' as ruta_secuencial FROM universo WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max {filtro_sql} AND mrun NOT IN (SELECT mrun FROM rutas_concatenadas)
-        UNION ALL
-        SELECT mrun, ruta_secuencial FROM rutas_concatenadas
+        WITHIN GROUP (ORDER BY anio_matricula_post ASC) as ruta
+        FROM (
+            SELECT mrun, nivel_estudio_post, anio_matricula_post,
+                   LAG(nivel_estudio_post) OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as nivel_ant
+            FROM EventosPost
+        ) e WHERE nivel_ant IS NULL OR nivel_ant <> nivel_estudio_post
+        GROUP BY mrun
     )
-    SELECT ruta_secuencial, COUNT(DISTINCT mrun) as cantidad, 
-    CAST(COUNT(DISTINCT mrun) AS FLOAT) * 100 / SUM(COUNT(DISTINCT mrun)) OVER() as porcentaje
-    FROM final_total GROUP BY ruta_secuencial ORDER BY cantidad DESC
+    SELECT 
+        ISNULL(c.ruta, 'Solo Pregrado (No Continuó)') as ruta_secuencial,
+        COUNT(DISTINCT u.mrun) as cantidad
+    FROM UniversoMaestro u
+    LEFT JOIN Cadenas c ON u.mrun = c.mrun
+    WHERE u.cohorte BETWEEN :anio_min AND :anio_max
+      {filtro_sql}
+    GROUP BY ISNULL(c.ruta, 'Solo Pregrado (No Continuó)')
+    ORDER BY cantidad DESC
     """
-    return pd.read_sql(text(sql_query), db_engine, params=params)
+    df = pd.read_sql(text(sql_query), db_engine, params=params)
+    if not df.empty:
+        df['porcentaje'] = (df['cantidad'] / df['cantidad'].sum()) * 100
+    return df
 
 # print(get_rutas_academicas(rango_anios=[2007,2007], tipo_poblacion="Titulados"))
 

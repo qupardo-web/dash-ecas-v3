@@ -144,9 +144,10 @@ layout = dbc.Container([
 
             # Fila de KPIs Superiores (Tarjetas Estáticas)
             dbc.Row([
-                dbc.Col(crear_card_metric_estatica("val-cohorte", "Total Cohorte", "fa-users"), width=4),
-                dbc.Col(crear_card_metric_estatica("val-titulados", "Total Titulados", "fa-graduation-cap"), width=4),
-                dbc.Col(crear_card_metric_estatica("val-desertores", "Total Desertores", "fa-door-open"), width=4),
+                dbc.Col(crear_card_metric_estatica("val-cohorte", "Total Cohorte", "fa-users"), width=3),
+                dbc.Col(crear_card_metric_estatica("val-titulados", "Total Titulados", "fa-graduation-cap"), width=3),
+                dbc.Col(crear_card_metric_estatica("val-desertores", "Total Desertores", "fa-door-open"), width=3),
+                dbc.Col(crear_card_metric_estatica("val-abandono", "Total Abandono", "fa-exclamation"), width=3)
             ], className="mb-4"),
 
             # Fila 1: Gráfico Principal de Ingresos
@@ -305,7 +306,8 @@ layout = dbc.Container([
 @callback(
     [Output("val-cohorte", "children"),
      Output("val-titulados", "children"),
-     Output("val-desertores", "children")],
+     Output("val-desertores", "children"),
+     Output("val-abandono", "children")],
     [Input("slider-años-desertores", "value"),
      Input("radio-jornada-desertores", "value"),
      Input("radio-genero-desertores", "value"),
@@ -313,12 +315,13 @@ layout = dbc.Container([
 )
 def update_kpi_cards(rango_anios, jornada, genero, rango_edad):
     # Ahora pasamos 'rango_edad' a la query
-    total_ingreso, total_tit, total_des = get_kpis_cabecera(rango_anios, jornada, genero, rango_edad)
+    total_ingreso, total_tit, total_des, total_abandono = get_kpis_cabecera(rango_anios, jornada, genero, rango_edad)
     
     return (
         f"{total_ingreso:,}".replace(",", "."),
         f"{total_tit:,}".replace(",", "."),
-        f"{total_des:,}".replace(",", ".")
+        f"{total_des:,}".replace(",", "."),
+        f"{total_abandono:,}".replace(",", ".")
     )
 
 @callback(
@@ -435,7 +438,7 @@ def update_grafico_demora(rango, poblacion, nivel, jornada, genero, edad):
      Input('dropdown-edad-ex-alumnos', 'value')]
 )
 def update_pictograma(rango_anios, poblacion, jornada, genero, rango_edad):
-    df = get_rutas_academicas(
+    df = get_rutas_academicas_completas(
         rango_anios=rango_anios, 
         tipo_poblacion=poblacion, 
         jornada=jornada, 

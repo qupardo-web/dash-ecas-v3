@@ -365,6 +365,66 @@ def actualizar_tabla_matriculas():
     except Exception as e:
         print(f"Error al actualizar la tabla: {e}")
 
+def actualizar_tabla_desertores_ecas():
+    # Usamos LEFT JOIN para que la tabla contenga a TODOS los desertores
+    # Los que no tienen ruta aparecerán con valores NULL en las columnas de destino
+    query_insert_fuga = text("""
+    IF OBJECT_ID('tabla_fuga_detallada_ecas', 'U') IS NOT NULL
+        DROP TABLE tabla_fuga_detallada_ecas;
+
+    WITH UltimaMatriculaECAS AS (
+        SELECT * FROM (
+            SELECT 
+                mrun, periodo as ultimo_periodo_ecas, genero, rango_edad,
+                jornada as jornada_ecas, cohorte as anio_ingreso_ecas,
+                ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn
+            FROM tabla_matriculas_competencia_unificada
+            WHERE cod_inst = 104
+        ) t WHERE rn = 1
+    ),
+    DesertoresValidos AS (
+        SELECT u.*
+        FROM UltimaMatriculaECAS u
+        LEFT JOIN tabla_dashboard_titulados t ON u.mrun = t.mrun AND t.cod_inst = 104
+        WHERE t.mrun IS NULL
+    )
+    SELECT 
+        D.mrun, D.genero, D.rango_edad, D.jornada_ecas, D.anio_ingreso_ecas, D.ultimo_periodo_ecas,
+        V.cat_periodo AS anio_matricula_post,
+        V.cod_inst AS inst_destino_id,
+        V.nomb_inst AS inst_destino,
+        V.nomb_carrera AS carrera_destino,
+        V.nivel_global AS nivel_estudio_post,
+        V.tipo_inst_1 AS tipo_institucion_destino,
+        V.area_conocimiento AS area_conocimiento_destino,
+        V.dur_total_carr AS duracion_total_carrera,
+        V.acreditada_carr AS acreditada_carr,
+        V.acreditada_inst AS acreditada_inst
+
+    INTO tabla_fuga_detallada_ecas
+    FROM DesertoresValidos D
+    INNER JOIN vista_matricula_unificada V ON D.mrun = V.mrun 
+        AND V.cod_inst <> 104 
+        AND V.cat_periodo > D.ultimo_periodo_ecas;
+
+    CREATE INDEX idx_fuga_mrun ON tabla_fuga_detallada_ecas(mrun);
+    CREATE INDEX idx_fuga_cohorte ON tabla_fuga_detallada_ecas(anio_ingreso_ecas);
+    """)
+
+    try:
+        with db_engine.connect() as conn:
+            conn.execute(query_insert_fuga)
+            conn.commit()
+            
+            # Verificación inmediata de conteo
+            result = conn.execute(text("SELECT COUNT(*) FROM tabla_fuga_detallada_ecas")).scalar()
+            print(f"Tabla 'tabla_fuga_detallada_ecas' actualizada. Registros totales: {result}")
+            
+    except Exception as e:
+        print(f"Error al actualizar la tabla de fuga: {e}")
+
+actualizar_tabla_desertores_ecas()
+
 def actualizar_tabla_titulados():
 
     query_insert = text("""
@@ -575,7 +635,8 @@ def actualizar_tabla_trayectoria_titulados():
 # Ejecutar la actualización de tablas fisicas
 #actualizar_tabla_matriculas()
 #actualizar_tabla_egresados()
-actualizar_tabla_titulados()
+#actualizar_tabla_titulados()
 #actualizar_tabla_trayectoria_titulados()
 #actualizar_tabla_origenes_totales()
 #actualizar_tabla_titulados_desertores()
+#actualizar_tabla_desertores_ecas()
