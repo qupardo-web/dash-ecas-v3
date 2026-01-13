@@ -399,7 +399,8 @@ def actualizar_tabla_desertores_ecas():
         V.area_conocimiento AS area_conocimiento_destino,
         V.dur_total_carr AS duracion_total_carrera,
         V.acreditada_carr AS acreditada_carr,
-        V.acreditada_inst AS acreditada_inst
+        V.acreditada_inst AS acreditada_inst,
+        (D.ultimo_periodo_ecas + 1) AS anio_fuga_ecas
 
     INTO tabla_fuga_detallada_ecas
     FROM DesertoresValidos D
@@ -537,7 +538,7 @@ def actualizar_tabla_titulados_desertores():
         t.tipo_inst_1 AS tipo_inst_titulacion
     INTO tabla_titulados_externos_desertores
     FROM (SELECT DISTINCT mrun, genero, rango_edad, jornada_ecas, anio_ingreso_ecas 
-        FROM tabla_fuga_detallada_desertores) f
+        FROM tabla_fuga_detallada_ecas) f
     INNER JOIN vista_titulados_unificada_limpia t ON f.mrun = t.mrun
     WHERE t.cod_inst <> 104; -- Excluimos ECAS porque buscamos titulación externa
 

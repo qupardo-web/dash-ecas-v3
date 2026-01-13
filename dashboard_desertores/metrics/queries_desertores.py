@@ -259,7 +259,7 @@ def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos")
 
     query = f"""
     SELECT 
-        (SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_desertores WHERE {where_clause}) as total_desertores,
+        (SELECT COUNT(DISTINCT mrun) FROM tabla_fuga_detallada_ecas WHERE {where_clause}) as total_desertores,
         (SELECT COUNT(DISTINCT mrun) FROM tabla_titulados_externos_desertores WHERE {where_clause}) as total_titulados_ext
     """
     
@@ -299,7 +299,7 @@ def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, j
         {columna} as destino,
         -- Usamos MIN para quedarnos con el primer año que pisó ese destino
         ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY MIN(anio_matricula_post) ASC) as rn
-    FROM tabla_fuga_detallada_desertores
+    FROM tabla_fuga_detallada_ecas
     WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
     {filtro_jornada}
     {filtro_genero}
@@ -342,7 +342,7 @@ def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", 
             mrun,
             anio_fuga_ecas,
             MIN(anio_matricula_post) as primer_ingreso_destino
-        FROM tabla_fuga_detallada_desertores
+        FROM tabla_fuga_detallada_ecas
         WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
         {filtro_jornada}
         {filtro_genero}
