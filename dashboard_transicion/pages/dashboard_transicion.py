@@ -9,25 +9,6 @@ import json
 import requests
 import os
 
-COORDENADAS_REGIONES = {
-    "15": {"lat": -18.50, "lon": -69.80, "zoom": 7.5}, # Arica y Parinacota
-    "1":  {"lat": -20.20, "lon": -69.30, "zoom": 7.0}, # Tarapacá
-    "2":  {"lat": -23.65, "lon": -69.20, "zoom": 6.0}, # Antofagasta
-    "3":  {"lat": -27.30, "lon": -70.30, "zoom": 6.5}, # Atacama
-    "4":  {"lat": -30.60, "lon": -70.80, "zoom": 7.0}, # Coquimbo
-    "5":  {"lat": -32.80, "lon": -71.20, "zoom": 7.5}, # Valparaíso
-    "13": {"lat": -33.60, "lon": -70.66, "zoom": 8.0}, # Metropolitana
-    "6":  {"lat": -34.40, "lon": -71.10, "zoom": 7.5}, # O'Higgins
-    "7":  {"lat": -35.50, "lon": -71.40, "zoom": 7.5}, # Maule
-    "16": {"lat": -36.70, "lon": -72.10, "zoom": 8.0}, # Ñuble
-    "8":  {"lat": -37.40, "lon": -72.40, "zoom": 7.5}, # Biobío
-    "9":  {"lat": -38.70, "lon": -72.50, "zoom": 7.5}, # Araucanía
-    "14": {"lat": -40.00, "lon": -72.30, "zoom": 8.0}, # Los Ríos
-    "10": {"lat": -41.70, "lon": -72.80, "zoom": 7.0}, # Los Lagos
-    "11": {"lat": -46.50, "lon": -73.00, "zoom": 6.0}, # Aysén
-    "12": {"lat": -53.00, "lon": -71.00, "zoom": 5.5}, # Magallanes
-}
-
 current_dir = os.path.dirname(os.path.abspath(__file__)) 
 
 root_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
@@ -48,7 +29,52 @@ MAP_CARD_STYLE = {
     "marginBottom": "20px",
     "overflow": "hidden",
     "backgroundColor": "white",
+    "overflowY": "scroll"
 }
+
+def render_kpi_card_with_icon(id_valor, titulo, icono_class):
+    return dbc.Card([
+        dbc.CardBody([
+            dbc.Row([
+                # Columna del Icono
+                dbc.Col(
+                    html.I(className=f"fas {icono_class} fa-2x", style={"color": "#162f8a"}), 
+                    width=3, 
+                    className="d-flex justify-content-center"
+                ),
+                # Columna del Texto y Valor
+                dbc.Col([
+                    html.P(titulo, className="text-muted mb-1 small", style={"fontWeight": "600"}),
+                    dbc.Spinner(
+                        html.H4("0", id=id_valor, className="fw-bold mb-0", style={"color": "#2c3e50"}),
+                        size="sm", 
+                        color="primary",
+                        spinner_style={"float": "left"}
+                    ),
+                ], width=9),
+            ], align="center")
+        ], className="p-3")
+    ], style={
+        "borderRadius": "15px", 
+        "border": "none", 
+        "boxShadow": "0 4px 12px rgba(0,0,0,0.08)",
+        "height": "100%" # Para asegurar que todas midan lo mismo en la fila
+    })
+
+df_competencia = get_info_competencia()
+lista_jornadas = get_jornadas_disponibles()
+
+# Formatear opciones para Dropdowns
+opciones_institucion = [
+    {"label": row["nomb_inst"], "value": row["cod_inst"]} 
+    for _, row in df_competencia.iterrows()
+]
+# Agregamos la opción "Todas" si es necesario
+opciones_institucion.insert(0, {"label": "Todas", "value": "all"})
+
+opciones_jornada = [{"label": j, "value": j} for j in lista_jornadas]
+if "Todas" not in lista_jornadas:
+    opciones_jornada.insert(0, {"label": "Todas", "value": "Todas"})
 
 # --- LAYOUT PRINCIPAL ---
 layout = dbc.Container([
@@ -58,24 +84,21 @@ layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             html.H4("Análisis de transición academica", className="border-bottom pb-2"),
-            dbc.Button("← Volver a Chile", id="btn-reset-map", color="link", className="p-0 text-decoration-none small")
         ])
     ], className="mb-3"),
 
     dbc.Row([
     # 1. Filtro Institución
         dbc.Col([
-            html.Label("Institución", className="small fw-bold"),
-            dcc.Dropdown(
-                id="filtro-institucion",
-                options=[
-                    {"label": "ECAS", "value": 104},
-                    {"label": "Competencia", "value": "comp"},
-                    {"label": "Todas", "value": "all"}
-                ],
-                value=104,
-                clearable=False
-            )
+        html.Label("Institución", className="small fw-bold"),
+        dcc.Dropdown(
+            id="filtro-institucion",
+            options=opciones_institucion,
+            value=104,  # ECAS por defecto
+            clearable=False,
+            style={'minHeight': '50px'}, 
+            optionHeight=80
+        )
         ], width=2),
 
         # 2. Rango de Cohorte
@@ -94,11 +117,7 @@ layout = dbc.Container([
             html.Label("Jornada", className="small fw-bold"),
             dcc.Dropdown(
                 id="filtro-jornada",
-                options=[
-                    {"label": "Todas", "value": "Todas"},
-                    {"label": "Diurna", "value": "Diurna"},
-                    {"label": "Vespertina", "value": "Vespertina"}
-                ],
+                options=opciones_jornada,
                 value="Todas",
                 clearable=False
             )
@@ -128,6 +147,7 @@ layout = dbc.Container([
     ], className="mb-4 p-3 bg-white rounded shadow-sm mx-0 align-items-center"),
 
     dbc.Row([
+        # COLUMNA IZQUIERDA: Mapa (Mantiene su altura de 650px)
         dbc.Col([
             dbc.Card([
                 dbc.CardHeader([
@@ -136,7 +156,8 @@ layout = dbc.Container([
                         dbc.Col(
                             dbc.Badge("Vista: Nacional", id="badge-nivel", color="info", className="float-end"),
                             width=4
-                        )
+                        ),
+                        dbc.Button("← Volver a Chile", id="btn-reset-map", color="link", className="p-0 text-decoration-none small")
                     ])
                 ], className="bg-white border-bottom-0 pt-3"),
                 dbc.CardBody([
@@ -144,18 +165,134 @@ layout = dbc.Container([
                         type="circle",
                         children=dcc.Graph(
                             id="mapa-interactivo", 
-                            config={
-                                'scrollZoom': True,      # Permite zoom con la rueda del 
-                            },
+                            config={'scrollZoom': True},
                             style={"height": "650px"}
                         )
                     )
                 ])
             ], style=MAP_CARD_STYLE)
-        ], width=12)
-    ], className="mx-0"),
+        ], width=8),
+
+        # COLUMNA DERECHA: Ahora centrada verticalmente
+        dbc.Col([
+            # Contenedor con d-flex y flex-column para distribuir el espacio
+            html.Div([
+                # Bloque de 4 KPIs (2x2)
+                html.Div([
+                    dbc.Row([
+                        dbc.Col(render_kpi_card_with_icon("id-kpi-1", "Total Matriculados", "fa-users"), width=6, className="pb-3"),
+                        dbc.Col(render_kpi_card_with_icon("id-kpi-2", "Total Titulados", "fa-graduation-cap"), width=6, className="pb-3"),
+                    ], className="g-3"), # g-3 añade espacio uniforme entre columnas
+                ], className="mb-3"), # Espacio entre KPIs y gráfico
+
+                # Gráfico Lateral con altura ajustada para llenar el vacío
+                dbc.Card([
+                    dbc.CardHeader("Indice de ruralidad", className="fw-bold small"),
+                    dbc.CardBody([
+                        dcc.Loading(
+                            dcc.Graph(
+                                id="graph-lateral-detalle", 
+                                style={"height": "430px"} # Aumentamos altura para balancear
+                            )
+                        )
+                    ])
+                ], style=MAP_CARD_STYLE)
+            ], 
+            className="d-flex flex-column justify-content-center h-100" 
+            )
+        ], width=4)
+    ], className="mx-0 align-items-stretch"),
+
+    dbc.Row([
+    # Columna 1: Dependencia Administrativa
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Dependencia Colegio de Origen", className="fw-bold small"),
+                dbc.CardBody([
+                    dcc.Loading(dcc.Graph(id="graph-dependencia", style={"height": "350px"}))
+                ])
+            ], style=MAP_CARD_STYLE)
+        ], width=4),
+
+        # Columna 2: Tipo de Enseñanza (Sugerido para completar la fila)
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Tipo de Enseñanza Media", className="fw-bold small"),
+                dbc.CardBody([
+                    dcc.Loading(dcc.Graph(id="graph-ensenianza", style={"height": "350px"}))
+                ])
+            ], style=MAP_CARD_STYLE)
+        ], width=4),
+
+        # Columna 3: Demora Ingreso (Sugerido para completar la fila)
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Años de Demora Ingreso ES", className="fw-bold small"),
+                dbc.CardBody([
+                    dcc.Loading(dcc.Graph(id="graph-demora", style={"height": "350px"}))
+                ])
+            ], style=MAP_CARD_STYLE)
+        ], width=4),
+    ], className="mx-0 mt-4"),
+
+    dbc.Row([
+        # Gráfico Persistencia vs NEM
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Persistencia al 2do Año vs NEM", className="fw-bold small"),
+                dbc.CardBody([
+                    dcc.Loading(dcc.Graph(id="graph-nem-persistencia", style={"height": "350px"}))
+                ])
+            ], style=MAP_CARD_STYLE)
+        ], width=6),
+
+        # Gráfico Titulación Oportuna vs NEM
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Tasa de Titulación Oportuna vs NEM", className="fw-bold small"),
+                dbc.CardBody([
+                    dcc.Loading(dcc.Graph(id="graph-nem-titulacion", style={"height": "350px"}))
+                ])
+            ], style=MAP_CARD_STYLE)
+        ], width=6),
+    ], className="mx-0 mt-4")
 
 ], fluid=True, style={"backgroundColor": "#f4f6f9", "minHeight": "100vh", "padding": "2rem"})
+
+@callback(
+    Output("filtro-carrera", "options"),
+    Input("filtro-institucion", "value")
+)
+def update_carreras_dropdown(cod_inst_sel):
+    if cod_inst_sel == "all":
+        # Traer todas las carreras únicas de la base
+        return [{"label": "Todas", "value": "Todas"}]
+    
+    # Filtrar el DF de competencia por la institución seleccionada
+    carreras_string = df_competencia[df_competencia['cod_inst'] == cod_inst_sel]['carreras'].iloc[0]
+    lista_carreras = carreras_string.split(', ')
+    
+    return [{"label": c, "value": c} for c in lista_carreras]
+    
+
+@callback(
+    Output("id-kpi-1", "children"), # Total Matriculados
+    Output("id-kpi-2", "children"), # Total Titulados
+    Input("selected-region-store", "data"), # <--- Gatillo inmediato al hacer clic
+    Input("btn-update", "n_clicks"),
+    State("filtro-cohorte", "value"),
+    State("filtro-institucion", "value"),
+    State("filtro-jornada", "value"),
+    State("filtro-genero", "value")
+)
+def update_kpi_cards(region_id, n_clicks, cohorte, inst, jornada, genero):
+    # La función get_total_titulados_y_matriculados ya recibe el region_id
+    data = get_total_titulados_y_matriculados(cohorte, inst, jornada, genero, region_id)
+    
+    def fmt(val): 
+        return f"{val:,}".replace(",", ".")
+
+    return fmt(data['total_m']), fmt(data['total_t'])
 
 @callback(
     Output("mapa-interactivo", "figure"),
@@ -171,14 +308,14 @@ layout = dbc.Container([
     State("filtro-genero", "value"),
     State("selected-region-store", "data")
 )
-def update_geographic_map(n_upd, clickData, n_reset, cohorte, inst, jornada, genero, current_region):
+def update_dashboard_map(n_upd, clickData, n_reset, cohorte, inst, jornada, genero, current_region):
     ctx = dash.callback_context
     trigger = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
 
-    # 1. OBTENER LOS DATOS REALES
+    # 1. Obtención de datos
     df_raw = get_data_geografica_unificada_rango(cohorte, inst, jornada, genero)
 
-    # 2. Lógica de Navegación (Drill-down)
+    # 2. Lógica de Navegación
     region_id = current_region
     if trigger == "mapa-interactivo" and clickData:
         loc = str(clickData['points'][0]['location'])
@@ -187,21 +324,15 @@ def update_geographic_map(n_upd, clickData, n_reset, cohorte, inst, jornada, gen
     elif trigger == "btn-reset-map":
         region_id = None
 
-    
+    # 3. Preparación de DataFrames y Renderizado
     if region_id and region_id in COORDENADAS_REGIONES:
-        
+        # --- VISTA COMUNAL ---
         comunas_geojson = [
-            {
-                "cod_comuna": str(f["properties"]["cut"]),
-                "nomb_comuna": f["properties"]["comuna"]
-            } 
-            for f in geojson_comunas["features"] 
-            if str(f["properties"]["region"]) == region_id
+            {"cod_comuna": str(f["properties"]["cut"]), "nomb_comuna": f["properties"]["comuna"]} 
+            for f in geojson_comunas["features"] if str(f["properties"]["region"]) == region_id
         ]
-        df_base = pd.DataFrame(comunas_geojson)
+        df_base = pd.DataFrame(comunas_geojson).drop_duplicates(subset=['cod_comuna'])
         
-
-        # B. Unimos con los datos reales
         if df_raw is not None and not df_raw.empty:
             df_raw['cod_comuna'] = df_raw['cod_comuna'].astype(str)
             df_plot = pd.merge(df_base, df_raw[['cod_comuna', 'cantidad']], on="cod_comuna", how="left")
@@ -209,38 +340,29 @@ def update_geographic_map(n_upd, clickData, n_reset, cohorte, inst, jornada, gen
             df_plot = df_base.copy()
             df_plot['cantidad'] = 0
 
-        # C. Llenamos los nulos con 0
         df_plot['cantidad'] = df_plot['cantidad'].fillna(0)
-        print(df_plot)
+
+        # Configuramos vista regional desde el diccionario
+        config_region = COORDENADAS_REGIONES.get(region_id)
         
-        fig = px.choropleth_mapbox(
-            data_frame=df_plot,
+        fig = create_interactive_map(
+            df_plot=df_plot,
             geojson=geojson_comunas,
-            locations="cod_comuna",
-            featureidkey="properties.cut",
-            color="cantidad",
-            hover_name="nomb_comuna",
-            mapbox_style="white-bg",
-            color_continuous_scale="Viridis",
-            range_color=[0, df_plot['cantidad'].max() if df_plot['cantidad'].max() > 0 else 10] # Evita escala errónea si todo es 0
+            is_comuna=True,
+            centro_dict=config_region,
+            zoom_nivel=config_region["zoom"] 
         )
-        
-        centro = {"lat": COORDENADAS_REGIONES[region_id]["lat"], "lon": COORDENADAS_REGIONES[region_id]["lon"]}
-        zoom_nivel = COORDENADAS_REGIONES[region_id]["zoom"]
-        badge_text, badge_color = f"Región: {region_id}", "success"
-        
+
+        return fig, region_id, f"Región: {region_id}", "success"
+
     else:
-    
+        # --- VISTA NACIONAL ---
         regiones_base = [
-            {
-                "cod_region": str(f["properties"]["codregion"]), 
-                "nomb_region": f["properties"]["Region"]
-            } 
+            {"cod_region": str(f["properties"]["codregion"]), "nomb_region": f["properties"]["Region"]} 
             for f in geojson_regiones["features"]
         ]
         df_base = pd.DataFrame(regiones_base)
 
-        # B. Agrupar datos reales
         if df_raw is not None and not df_raw.empty:
             df_raw['cod_region'] = df_raw['cod_region'].astype(str)
             df_real_reg = df_raw.groupby('cod_region')['cantidad'].sum().reset_index()
@@ -251,29 +373,47 @@ def update_geographic_map(n_upd, clickData, n_reset, cohorte, inst, jornada, gen
 
         df_plot['cantidad'] = df_plot['cantidad'].fillna(0)
 
-        fig = px.choropleth_mapbox(
-            data_frame=df_plot,
-            geojson=geojson_regiones,
-            locations="cod_region",
-            featureidkey="properties.codregion",
-            color="cantidad",
-            hover_name="nomb_region",
-            mapbox_style="white-bg",
-            color_continuous_scale="Viridis"
-        )
-        centro = {"lat": -33.45, "lon": -71.5}
-        zoom_nivel = 3.8
-        badge_text, badge_color = "Vista: Nacional", "info"
+        # Definimos una configuración fija para todo Chile (Sin usar config_region)
+        config_nacional = {"lat": -39.5, "lon": -71.5, "zoom": 3.8}
 
-    # 4. Ajustes finales de Layout
-    fig.update_layout(
-        mapbox=dict(
-            center=centro,
-            zoom=zoom_nivel,
-            bounds={"west": -76, "east": -65, "south": -56, "north": -17}
-        ),
-        dragmode="zoom",
-        margin={"r":0,"t":0,"l":0,"b":0}
-    )
-    
-    return fig, region_id, badge_text, badge_color
+        fig = create_interactive_map(
+            df_plot=df_plot,
+            geojson=geojson_regiones, # Usamos regiones
+            is_comuna=False,          # No son comunas
+            centro_dict=config_nacional,
+            zoom_nivel=config_nacional["zoom"] 
+        )
+        
+        return fig, None, "Vista: Nacional", "info"
+
+@callback(
+    Output("graph-dependencia", "figure"),
+    Output("graph-ensenianza", "figure"),
+    Output("graph-demora", "figure"),
+    Output("graph-nem-persistencia", "figure"),
+    Output("graph-nem-titulacion", "figure"),
+    Output("graph-lateral-detalle", "figure"), # Agregamos el gráfico de ruralidad lateral
+    Input("selected-region-store", "data"),    # Gatillo inmediato al hacer clic en el mapa
+    Input("btn-update", "n_clicks"),           # Mantiene la opción de actualizar por filtros manuales
+    State("filtro-cohorte", "value"),
+    State("filtro-institucion", "value"),
+    State("filtro-jornada", "value"),
+    State("filtro-genero", "value"),
+)
+def update_statistical_graphs(region_id, n_clicks, cohorte, inst, jornada, genero):
+
+    df_dep = get_distribucion_dependencia_rango(cohorte, inst, genero, jornada, region_id=region_id)
+    df_ens = get_tasas_articulacion_tipo_establecimiento_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
+    df_dem = get_demora_ingreso_total(cohorte, inst, "Todas", genero, jornada, region_id=region_id)
+    df_nem_per = get_correlacion_nem_persistencia_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
+    df_nem_tit = get_correlacion_nem_titulacion_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
+    df_rural = get_kpi_ruralidad_seguimiento_rango(cohorte, inst, jornada, genero, region_id=region_id)
+
+    fig_dep = create_donut_chart(df_dep)
+    fig_ens = create_bar_ensenianza(df_ens)
+    fig_dem = create_line_demora(df_dem)
+    fig_nem_per = create_nem_persistence_chart(df_nem_per)
+    fig_nem_tit = create_nem_titulacion_chart(df_nem_tit)
+    fig_rural = create_ruralidad_comparison_chart(df_rural)
+
+    return fig_dep, fig_ens, fig_dem, fig_nem_per, fig_nem_tit, fig_rural
