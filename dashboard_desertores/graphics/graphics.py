@@ -4,45 +4,79 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
-def create_ingresos_line_chart(df):
+def create_dynamic_ingresos_chart(df: pd.DataFrame, rango: list, label_genero: str) -> go.Figure:
+    """
+    Decide entre Gráfico de Barras (Año único) o Líneas (Rango).
+    Incluye lógica de resaltado ECAS y línea de promedio para institución única.
+    """
     if df is None or df.empty: 
         return go.Figure().update_layout(title="Sin datos para los filtros seleccionados")
 
-    # 1. Crear el gráfico base
-    fig = px.line(
-        df, 
-        x="cohorte", 
-        y="total_ingresos", 
-        color="nomb_inst",
-        markers=True, 
-        template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Plotly 
-    )
+    es_año_unico = (rango[0] == rango[1])
 
-    # --- NUEVA LÓGICA: LÍNEA DE PROMEDIO ---
-    # Si el DataFrame contiene solo una institución, añadimos la línea de promedio
-    instituciones = df['nomb_inst'].unique()
-    if len(instituciones) == 1:
-        promedio = df['total_ingresos'].mean()
+    if es_año_unico:
+        # --- MODO BARRAS (Un solo año) ---
+        # Ordenamos por cantidad para que las barras se vean jerarquizadas
+        df = df.sort_values('total_ingresos', ascending=False)
         
-        fig.add_hline(
-            y=promedio, 
-            line_dash="dot", 
-            line_color="red",
-            annotation_text=f"Promedio: {promedio:.0f}", 
-            annotation_position="top left"
+        fig = px.bar(
+            df, 
+            x='nomb_inst', 
+            y='total_ingresos',
+            color='nomb_inst', 
+            text_auto='.0f',
+            title=f"Matrícula {rango[0]}{label_genero}",
+            labels={'nomb_inst': 'Institución', 'total_ingresos': 'Alumnos'},
+        )
+        
+        # Resaltado ECAS en barras
+        for trace in fig.data:
+            if "ESCUELA DE CONTADORES" in trace.name.upper() or "ECAS" in trace.name.upper():
+                trace.update(marker_color="#162f8a", opacity=1.0)
+            else:
+                trace.update(opacity=1.0)
+                
+        fig.update_layout(
+            showlegend=True,
+            xaxis=dict(showticklabels=False, title=None))
+
+    else:
+        eje_x = "cohorte" if "cohorte" in df.columns else "anio_ingreso"
+        
+        fig = px.line(
+            df, 
+            x=eje_x, 
+            y="total_ingresos", 
+            color="nomb_inst",
+            markers=True, 
+            title=f"Evolución Histórica de Matrícula{label_genero}",
+            labels={eje_x: "Año de Ingreso", "total_ingresos": "Total Matriculados", "nomb_inst": "Institución"},
+            color_discrete_sequence=px.colors.qualitative.Safe 
         )
 
-    # 2. Configuración de TRAZAS (Estilo visual)
-    fig.for_each_trace(lambda t: t.update(
-        line=dict(
-            width=5 if "ECAS" in t.name.upper() else 2,
-            color="#FF6600" if "ECAS" in t.name.upper() else None 
-        )
-    ))
+        # Lógica de Línea de Promedio (Solo si hay una institución seleccionada)
+        instituciones = df['nomb_inst'].unique()
+        if len(instituciones) == 1:
+            promedio = df['total_ingresos'].mean()
+            fig.add_hline(
+                y=promedio, 
+                line_dash="dot", 
+                line_color="red",
+                annotation_text=f"Promedio: {promedio:.0f}", 
+                annotation_position="top left"
+            )
 
-    # 3. Configuración de LAYOUT
+        # Configuración de TRAZAS (Estilo visual ECAS)
+        fig.for_each_trace(lambda t: t.update(
+            line=dict(
+                width=3 if "ESCUELA DE CONTADORES" in t.name.upper() or "ECAS" in t.name.upper() else 2,
+                color="#162f8a" if "ESCUELA DE CONTADORES" in t.name.upper() else None 
+            )
+        ))
+
+    # --- CONFIGURACIÓN COMÚN DE LAYOUT ---
     fig.update_layout(
+        template="plotly_white",
         hovermode="x unified",
         legend=dict(
             orientation="h", 
@@ -50,81 +84,108 @@ def create_ingresos_line_chart(df):
             x=0.5,
             xanchor="center",
         ),
-        xaxis=dict(title="Año de Ingreso (Cohorte)", dtick=1), # dtick=1 asegura que se vean todos los años
-        yaxis=dict(title="Total Matriculados")
+        xaxis=dict(dtick=1) if not es_año_unico else dict(),
+        margin=dict(t=80, b=100, l=50, r=50)
     )
     
     return fig
 
-def create_permanencia_line_chart(df: pd.DataFrame) -> go.Figure:
+
+def create_dynamic_permanencia_chart(df: pd.DataFrame, rango: list) -> go.Figure:
+    """
+    Cerebro que decide entre Barras (año único) o Líneas (rango).
+    Utiliza el estilo de resaltado ECAS.
+    """
     if df.empty:
         return go.Figure().update_layout(title="Sin datos disponibles")
 
-    # Asegurar tipos de datos para el eje X
-    df["cohorte"] = df["cohorte"].astype(int)
+    es_año_unico = (rango[0] == rango[1])
 
-    # Definir paleta: Colores suaves para la competencia, naranja para ECAS
-    fig = px.line(
-        df,
-        x="cohorte",
-        y="tasa_permanencia_pct",
-        color="nomb_inst",
-        markers=True,
-        labels={
-            "cohorte": "Cohorte de Ingreso",
-            "tasa_permanencia_pct": "Tasa de Permanencia (%)",
-            "nomb_inst": "Institución"
-        },
-        color_discrete_sequence=px.colors.qualitative.Safe # Colores legibles
-    )
+    if es_año_unico:
 
-    # Aplicar lógica de resaltado robusta
-    for trace in fig.data:
-        # Buscamos 'ESCUELA DE CONTADORES' o el código 104 para mayor seguridad
-        if "ESCUELA DE CONTADORES" in trace.name.upper():
-            trace.update(
-                line=dict(width=5, color="#FF6600"), # Naranja ECAS
-                marker=dict(size=10, symbol="diamond"),
-                opacity=1.0,
-                legendrank=1 # Asegura que aparezca primero en la leyenda
-            )
-        else:
-            trace.update(
-                line=dict(width=1.5, dash="solid"), # Sólida pero delgada
-                opacity=0.5,
-                marker=dict(size=6)
-            )
+        if 'tasa_permanencia_pct' not in df.columns:
+            df = df.copy()
+            df['tasa_permanencia_pct'] = (df['base_n1'] / df['base_n']) * 100
 
-    fig.update_layout(
-        title=(
-            "<b>Permanencia de Estudiantes Primer Año (N → N+1)</b><br>"
-            "<sup>Comparativa longitudinal: % de alumnos que continúan tras su ingreso</sup>"
-        ),
-        hovermode="x unified",
-        yaxis=dict(
-            ticksuffix="%",
-            range=[0, 105], # Fijar escala para evitar distorsiones visuales
-            gridcolor="#eeeeee"
-        ),
-        xaxis=dict(
-            title=None,
-            tickmode='linear',
-            dtick=1,
-            gridcolor="#eeeeee"
-        ),
-        template="plotly_white",
-        height=500,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.4,
-            xanchor="center",
-            x=0.5
-        ),
-        margin=dict(t=100, l=60, r=40, b=120)
-    )
+        fig = px.bar(
+            df,
+            x="nomb_inst",
+            y="tasa_permanencia_pct",
+            color="nomb_inst",
+            text_auto='.1f',
+            labels={
+                "nomb_inst": "Institución",
+                "tasa_permanencia_pct": "Tasa de Permanencia (%)"
+            },
+        )
 
-    return fig
+        # Resaltar la barra de ECAS
+        for trace in fig.data:
+            if "ESCUELA DE CONTADORES" in trace.name.upper():
+                trace.update(marker_color="#162f8a", opacity=1.0)
+            else:
+                trace.update(opacity=1)
+
+        fig.update_layout(
+            title=f"Tasa de Permanencia N a N+1 (Cohorte {rango[0]})",
+            height=450,
+            template="plotly_white",
+            margin=dict(t=100, b=20, l=20, r=20),
+            legend=dict(orientation="h", y=-0.1),
+            yaxis=dict(showticklabels=False),
+            xaxis=dict(showticklabels=False, title=None),
+            showlegend=True # En barras el eje X ya dice el nombre
+        )
+        return fig
+
+    else:
+     
+        df["cohorte"] = df["cohorte"].astype(int)
+
+        fig = px.line(
+            df,
+            x="cohorte",
+            y="tasa_permanencia_pct",
+            color="nomb_inst",
+            markers=True,
+            labels={
+                "cohorte": "Cohorte de Ingreso",
+                "tasa_permanencia_pct": "Tasa de Permanencia (%)",
+                "nomb_inst": "Institución"
+            },
+            color_discrete_sequence=px.colors.qualitative.Safe
+        )
+
+        # Aplicar tu lógica de resaltado robusta
+        for trace in fig.data:
+            if "ESCUELA DE CONTADORES" in trace.name.upper():
+                trace.update(
+                    line=dict(width=1, color="#162f8a"),
+                    marker=dict(size=6),
+                    opacity=1.0,
+                    legendrank=1
+                )
+            else:
+                trace.update(
+                    line=dict(width=1, dash="solid"),
+                    opacity=1.0,
+                    marker=dict(size=6)
+                )
+
+        fig.update_layout(
+            title=(
+                "<b>Permanencia de Estudiantes Primer Año (N → N+1)</b><br>"
+                "<sup>Comparativa longitudinal: % de alumnos que continúan</sup>"
+            ),
+            hovermode="x unified",
+            yaxis=dict(ticksuffix="%", range=[0, 105], gridcolor="#eeeeee"),
+            xaxis=dict(showticklabels=False, title=None),
+            template="plotly_white",
+            height=450,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.4, xanchor="center", x=0.5),
+            margin=dict(t=100, l=60, r=40, b=120)
+        )
+        return fig
 
 def create_cambio_jornada_charts(df):
     if df.empty:

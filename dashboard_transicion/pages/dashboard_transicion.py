@@ -402,58 +402,76 @@ def update_dashboard_map(n_upd, clickData, n_reset, cohorte, inst, jornada, gene
         
         return fig, None, "Vista: Nacional", "info"
 
+# @callback(
+#     Output("graph-dependencia", "figure"),
+#     Output("graph-ensenianza", "figure"),
+#     Output("graph-demora", "figure"),
+#     Output("graph-nem-persistencia", "figure"),
+#     Output("graph-nem-titulacion", "figure"),
+#     Output("graph-lateral-detalle", "figure"),
+#     Output("grafico-dependencia-titulados", "figure"),
+#     Input("selected-region-store", "data"),
+#     Input("btn-update", "n_clicks"),
+#     State("filtro-cohorte", "value"),
+#     State("filtro-institucion", "value"),
+#     State("filtro-jornada", "value"),
+#     State("filtro-genero", "value"),
+# )
+# def update_statistical_graphs(region_id, n_clicks, cohorte, inst, jornada, genero):
+    
+#     df_dep = get_distribucion_dependencia_rango(cohorte, inst, genero, jornada, region_id=region_id)
+#     df_ens = get_tasas_articulacion_tipo_establecimiento_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
+#     df_dem = get_demora_ingreso_total(cohorte, inst, "Todas", genero, jornada, region_id=region_id)
+#     df_nem_per = get_correlacion_nem_persistencia_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
+#     df_nem_tit = get_correlacion_nem_titulacion_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
+#     df_rural = get_kpi_ruralidad_seguimiento_rango(cohorte, inst, jornada, genero, region_id=region_id)
+#     df_tit_dep = get_titulados_por_dependencia_rango(cohorte, inst, jornada, genero, region_id=region_id)
+
+#     fig_dep = create_donut_chart(df_dep)
+#     fig_ens = create_bar_ensenianza(df_ens)
+#     fig_dem = create_line_demora(df_dem)
+#     fig_nem_per = create_nem_persistence_chart(df_nem_per)
+#     fig_nem_tit = create_nem_titulacion_chart(df_nem_tit)
+#     fig_rural = create_ruralidad_comparison_chart(df_rural)
+#     periodo_texto = f"Cohortes {cohorte[0]}-{cohorte[1]}"
+#     fig_tit_dep = graficar_dependencia_titulados(df_tit_dep, periodo_texto)
+
+#     return fig_dep, fig_ens, fig_dem, fig_nem_per, fig_nem_tit, fig_rural, fig_tit_dep
+
 @callback(
     Output("graph-dependencia", "figure"),
     Output("graph-ensenianza", "figure"),
     Output("graph-demora", "figure"),
     Output("graph-nem-persistencia", "figure"),
     Output("graph-nem-titulacion", "figure"),
-    Output("graph-lateral-detalle", "figure"), # Agregamos el gráfico de ruralidad lateral
-    Input("selected-region-store", "data"),    # Gatillo inmediato al hacer clic en el mapa
-    Input("btn-update", "n_clicks"),           # Mantiene la opción de actualizar por filtros manuales
+    Output("graph-lateral-detalle", "figure"),
+    Output("grafico-dependencia-titulados", "figure"), # Nuevo Output agregado
+    Input("selected-region-store", "data"),
+    Input("btn-update", "n_clicks"),
     State("filtro-cohorte", "value"),
     State("filtro-institucion", "value"),
     State("filtro-jornada", "value"),
     State("filtro-genero", "value"),
 )
 def update_statistical_graphs(region_id, n_clicks, cohorte, inst, jornada, genero):
-
+    # 1. Obtención de datos (incluyendo el nuevo de titulados)
     df_dep = get_distribucion_dependencia_rango(cohorte, inst, genero, jornada, region_id=region_id)
     df_ens = get_tasas_articulacion_tipo_establecimiento_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
     df_dem = get_demora_ingreso_total(cohorte, inst, "Todas", genero, jornada, region_id=region_id)
     df_nem_per = get_correlacion_nem_persistencia_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
     df_nem_tit = get_correlacion_nem_titulacion_rango(cohorte, inst, jornada, "Todas", genero, region_id=region_id)
     df_rural = get_kpi_ruralidad_seguimiento_rango(cohorte, inst, jornada, genero, region_id=region_id)
+    df_tit_dep = get_titulados_por_dependencia_rango(cohorte, inst, genero, jornada, region_id)
 
+    # 2. Creación de figuras
     fig_dep = create_donut_chart(df_dep)
     fig_ens = create_bar_ensenianza(df_ens)
     fig_dem = create_line_demora(df_dem)
     fig_nem_per = create_nem_persistence_chart(df_nem_per)
     fig_nem_tit = create_nem_titulacion_chart(df_nem_tit)
     fig_rural = create_ruralidad_comparison_chart(df_rural)
-
-    return fig_dep, fig_ens, fig_dem, fig_nem_per, fig_nem_tit, fig_rural
-
-@callback(
-    Output('grafico-dependencia-titulados', 'figure'),
-    [Input("selected-region-store", "data"),    # Región seleccionada en el mapa
-     Input("btn-update", "n_clicks")],          # Botón actualizar
-    [State("filtro-cohorte", "value"),          # ID real del RangeSlider
-     State("filtro-jornada", "value"),          # ID real del Dropdown
-     State("filtro-genero", "value"),           # ID real del Dropdown
-     State("filtro-institucion", "value")]      # ID de la institución
-)
-def update_grafico_dependencia_titulados(region_id, n_clicks, cohorte, jornada, genero, inst):
-    # Usamos la función optimizada que creamos
-    df = get_titulados_por_dependencia_rango(
-        cohorte_range=cohorte,
-        cod_inst=inst,
-        jornada=jornada,
-        genero=genero,
-        region_id=region_id
-    )
-    
     periodo_texto = f"Cohortes {cohorte[0]}-{cohorte[1]}"
-    
-    # Asegúrate de que esta función 'graficar_dependencia_titulados' esté importada
-    return graficar_dependencia_titulados(df, periodo_texto)
+    fig_tit_dep = graficar_dependencia_titulados(df_tit_dep, periodo_texto)
+
+    # 3. Retornar todas las figuras en el orden de los Outputs
+    return fig_dep, fig_ens, fig_dem, fig_nem_per, fig_nem_tit, fig_rural, fig_tit_dep

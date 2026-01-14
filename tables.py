@@ -347,7 +347,6 @@ def actualizar_tabla_matriculas():
     FROM vista_matricula_unificada V
     LEFT JOIN EdadIngreso E ON V.mrun = E.mrun AND E.rn = 1
     WHERE V.anio_ing_carr_ori BETWEEN 2007 AND 2025
-    AND V.region_sede = 'Metropolitana'
     AND (V.nomb_carrera LIKE 'AUDITOR%' OR V.nomb_carrera LIKE 'CONTA%')
     AND (V.cod_inst = 104 OR V.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica') OR v.nomb_inst = 'UNIVERSIDAD SANTO TOMAS')
     AND V.dur_total_carr BETWEEN 8 AND 10;
@@ -644,10 +643,10 @@ def actualizar_tabla_trayectoria_titulados():
 #poblar_tabla_abandono_fisica(db_engine, df_abandono_total)
 
 # Ejecutar la actualización de tablas fisicas
-#actualizar_tabla_matriculas()
-#actualizar_tabla_egresados()
-#actualizar_tabla_titulados()
+actualizar_tabla_matriculas()
+actualizar_tabla_egresados()
+actualizar_tabla_titulados()
 actualizar_tabla_trayectoria_titulados()
-#actualizar_tabla_origenes_totales()
-#actualizar_tabla_titulados_desertores()
-#actualizar_tabla_desertores_ecas()
+actualizar_tabla_origenes_totales()
+actualizar_tabla_titulados_desertores()
+actualizar_tabla_desertores_ecas()
