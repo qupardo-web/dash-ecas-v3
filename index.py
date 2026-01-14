@@ -20,16 +20,6 @@ navbar = dbc.NavbarSimple(
         dbc.NavItem(dbc.NavLink("Titulados", href="/titulados")),
         dbc.NavItem(dbc.NavLink("Acreditacion", href="/acreditacion")),
         dbc.NavItem(dbc.NavLink("Transición", href="/transicion")),
-        dbc.DropdownMenu(
-            children=[
-                dbc.DropdownMenuItem("Más Análisis", header=True),
-                dbc.DropdownMenuItem("Permanencia", href="/permanencia"),
-                dbc.DropdownMenuItem("Ranking Mercado", href="/mercado"),
-            ],
-            nav=True,
-            in_navbar=True,
-            label="Métricas Avanzadas",
-        ),
     ],
     brand="ECAS - Analytics Hub",
     brand_href="/",
@@ -67,8 +57,9 @@ def display_page(pathname):
                 html.P("Seleccione una métrica en la barra superior para comenzar."),
                 dbc.Row([
                     dbc.Col(dbc.Button("Dashboard Desercion", href="/desertores", color="primary"), width="auto"),
-                    dbc.Col(dbc.Button("Dashboard Ex Estudiantes", href="/titulados", color="secondary"), width="auto"),
-                    dbc.Col(dbc.Button("Dashboard Acreditacion", href="/acreditacion", color="secondary"), width="auto"),
+                    dbc.Col(dbc.Button("Dashboard Ex Estudiantes", href="/titulados", color="primary"), width="auto"),
+                    dbc.Col(dbc.Button("Dashboard Acreditacion", href="/acreditacion", color="primary"), width="auto"),
+                    dbc.Col(dbc.Button("Dashboard Transicion", href="/transicion", color="primary"), width="auto")
                 ])
             ], className="py-5")
         ])

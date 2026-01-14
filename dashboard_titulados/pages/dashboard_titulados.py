@@ -438,15 +438,29 @@ def update_grafico_demora(rango, poblacion, nivel, jornada, genero, edad):
      Input('dropdown-edad-ex-alumnos', 'value')]
 )
 def update_pictograma(rango_anios, poblacion, jornada, genero, rango_edad):
-    df = get_rutas_academicas_completas(
-        rango_anios=rango_anios, 
-        tipo_poblacion=poblacion, 
-        jornada=jornada, 
-        genero=genero, 
-        rango_edad=rango_edad
-    )
     
-    return crear_pictograma_trayectoria(df, "Mapa de Trayectorias Académicas")
+    if poblacion == "Titulados":
+        df = get_trayectorias_titulados_completa(
+            rango_anios=rango_anios, 
+            jornada=jornada, 
+            genero=genero, 
+            rango_edad=rango_edad
+        )
+        titulo = "Mapa de Trayectorias: Titulados"
+    else:
+        
+        df = get_trayectorias_desertores_completa(
+            rango_anios=rango_anios, 
+            jornada=jornada, 
+            genero=genero, 
+            rango_edad=rango_edad
+        )
+        titulo = "Mapa de Trayectorias: Desertores"
+
+    if df.empty:
+        return go.Figure()
+
+    return crear_pictograma_trayectoria(df, titulo)
 
 @callback(
     Output('grafico-continuidad-estudios', 'figure'),

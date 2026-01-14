@@ -75,93 +75,83 @@ def crear_pictograma_trayectoria(df, titulo):
     if df.empty:
         return go.Figure().update_layout(title=f"{titulo}: Sin datos")
 
-    # 1. Ordenar por porcentaje para agrupar bloques de colores
-    df_plot = df.sort_values('porcentaje', ascending=False).head(6).copy()
-    
-    fig = go.Figure()
+    # Normalizar nombre de columna
+    if 'trayectoria' in df.columns:
+        df = df.rename(columns={'trayectoria': 'ruta_secuencial'})
 
-    # Cuadrícula 10x10
+    # 1. TOTAL UNIVERSO REAL (Debe dar 3.072 según tu DF)
+    total_universo = int(df['cantidad'].sum())
+    
+    # 2. SELECCIONAR TOP 4 (Categorías principales a graficar)
+    df_plot = df.sort_values('cantidad', ascending=False).head(4).copy()
+    cantidad_top = int(df_plot['cantidad'].sum())
+
+    # 3. CÁLCULO MATEMÁTICO DEL RESTO (Sin redondeos intermedios)
+    # Esto garantiza que (Cantidad Top + Cantidad Otros) sea exactamente 3.072
+    cantidad_otros = total_universo - cantidad_top
+    porc_otros = (cantidad_otros / total_universo) * 100 if total_universo > 0 else 0
+
+    fig = go.Figure()
     x_coords = np.tile(np.arange(10), 10)
     y_coords = np.repeat(np.arange(9, -1, -1), 10)
     
-    colores_rutas = ["#162f8a", "#FF6600", "#00CC96", "#AB63FA", "#EF553B", "#FECB52"]
+    color_neutro = "#D3D3D3" 
+    colores_rutas = ["#162f8a", "#FF6600", "#00CC96", "#AB63FA", "#EF553B"]
     icono_user = "\uf007" 
     
     current_idx = 0
+    ruta_color_idx = 0
     
+    # 4. Dibujar categorías del Top
     for i, (_, row) in enumerate(df_plot.iterrows()):
         ruta = row['ruta_secuencial']
         porcentaje = row['porcentaje']
         cantidad = int(row['cantidad'])
         
-        # Cálculo de iconos para el Waffle Chart
+        # Determinamos iconos visuales (1 icono = 1%)
         num_icons = int(round(porcentaje))
         end_idx = min(current_idx + num_icons, 100)
         
         if end_idx > current_idx:
-            color = colores_rutas[i % len(colores_rutas)]
+            # Color gris para categorías de salida/abandono
+            if any(x in ruta for x in ["Abandono", "Solo Pregrado", "Sin Continuidad"]):
+                color = color_neutro
+            else:
+                color = colores_rutas[ruta_color_idx % len(colores_rutas)]
+                ruta_color_idx += 1
             
-            # Formateamos el nombre para la leyenda con Cantidad y %
             label_leyenda = f"{porcentaje:.1f}% ({cantidad:,}) - {ruta}".replace(",", ".")
             
             fig.add_trace(go.Scatter(
-                x=x_coords[current_idx:end_idx],
-                y=y_coords[current_idx:end_idx],
-                mode="text",
-                name=label_leyenda,
-                text=[icono_user] * (end_idx - current_idx),
-                textfont=dict(
-                    family=' "Font Awesome 6 Free", "Font Awesome 5 Free", FreeSolid ',
-                    size=22,
-                    color=color
-                ),
-                # Hover con información completa
-                hovertemplate=(
-                    f"<b>{ruta}</b><br>"
-                    f"Cantidad: {cantidad:,}<br>"
-                    f"Porcentaje: {porcentaje:.1f}%<extra></extra>"
-                ).replace(",", ".")
+                x=x_coords[current_idx:end_idx], y=y_coords[current_idx:end_idx],
+                mode="text", name=label_leyenda, text=[icono_user] * (end_idx - current_idx),
+                textfont=dict(family=' "Font Awesome 6 Free", "Font Awesome 5 Free" ', size=22, color=color),
+                hovertemplate=f"<b>{ruta}</b><br>Cant: {cantidad:,}<br>%: {porcentaje:.1f}%<extra></extra>".replace(",", ".")
             ))
             current_idx = end_idx
 
-    # 2. RELLENO: Si sobran espacios
-    if current_idx < 100:
-        total_otros = int(df['cantidad'].sum() - df_plot['cantidad'].sum())
-        porc_otros = 100 - df_plot['porcentaje'].sum()
+    # 5. BLOQUE DE "OTROS" (Diferencia absoluta forzada)
+    # Rellenamos el espacio visual restante pero mostramos el TOTAL REAL de alumnos omitidos
+    if current_idx < 100 or cantidad_otros > 0:
+        iconos_restantes = max(0, 100 - current_idx)
+        label_otros = f"{porc_otros:.1f}% ({cantidad_otros:,}) - Otros / Resto".replace(",", ".")
         
         fig.add_trace(go.Scatter(
-            x=x_coords[current_idx:100],
-            y=y_coords[current_idx:100],
-            mode="text",
-            name=f"{porc_otros:.1f}% ({total_otros:,}) - Otros",
-            text=[icono_user] * (100 - current_idx),
-            textfont=dict(
-                family=' "Font Awesome 6 Free", "Font Awesome 5 Free", FreeSolid ',
-                size=22,
-                color="#E5ECF6"
-            ),
+            # Si no quedan iconos por redondeo, enviamos None para que solo aparezca la leyenda
+            x=x_coords[current_idx:100] if iconos_restantes > 0 else [None],
+            y=y_coords[current_idx:100] if iconos_restantes > 0 else [None],
+            mode="text", name=label_otros,
+            text=[icono_user] * iconos_restantes if iconos_restantes > 0 else [None],
+            textfont=dict(family=' "Font Awesome 6 Free" ', size=22, color="#E5ECF6"),
             hoverinfo="skip"
         ))
 
     fig.update_layout(
-        title=dict(
-            text=f"<b>{titulo}</b><br><span style='font-size:12px;color:gray'>Cada icono representa 1% del total seleccionado</span>",
-            x=0.5, y=0.95
-        ),
+        title=dict(text=f"<b>{titulo}</b>", x=0.5, y=0.95),
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10]),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10], scaleanchor="x"),
-        legend=dict(
-            orientation="h", 
-            yanchor="top", 
-            y=-0.1, # Bajamos un poco la leyenda para que no choque
-            xanchor="center", 
-            x=0.5,
-            traceorder="normal",
-            font=dict(size=10)
-        ),
-        margin=dict(t=80, b=120, l=20, r=20),
-        height=650, # Aumentamos un poco el alto para dar espacio a la leyenda extendida
-        plot_bgcolor='white'
+        legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
+        margin=dict(t=80, b=100, l=20, r=20), height=600, plot_bgcolor='white'
     )
 
     return fig

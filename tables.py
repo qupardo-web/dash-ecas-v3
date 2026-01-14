@@ -395,12 +395,14 @@ def actualizar_tabla_desertores_ecas():
         V.nomb_inst AS inst_destino,
         V.nomb_carrera AS carrera_destino,
         V.nivel_global AS nivel_estudio_post,
-        V.tipo_inst_1 AS tipo_institucion_destino,
+        V.tipo_inst_1,
         V.area_conocimiento AS area_conocimiento_destino,
         V.dur_total_carr AS duracion_total_carrera,
         V.acreditada_carr AS acreditada_carr,
         V.acreditada_inst AS acreditada_inst,
-        (D.ultimo_periodo_ecas + 1) AS anio_fuga_ecas
+        V.acre_inst_anio AS acre_inst_anio,
+        (D.ultimo_periodo_ecas + 1) AS anio_fuga_ecas,
+        (V.cat_periodo - (D.ultimo_periodo_ecas + 1)) AS tiempo_espera_post
 
     INTO tabla_fuga_detallada_ecas
     FROM DesertoresValidos D
@@ -424,7 +426,7 @@ def actualizar_tabla_desertores_ecas():
     except Exception as e:
         print(f"Error al actualizar la tabla de fuga: {e}")
 
-actualizar_tabla_desertores_ecas()
+#actualizar_tabla_desertores_ecas()
 
 def actualizar_tabla_titulados():
 
@@ -589,8 +591,8 @@ def actualizar_tabla_origenes_totales():
         print(f"Error al actualizar la tabla: {e}")
 
 def actualizar_tabla_trayectoria_titulados():
-
-    query_insert = text("""
+    # 1. Query para recrear la tabla (SELECT INTO)
+    query_tabla = text("""
     IF OBJECT_ID('tabla_trayectoria_post_titulado', 'U') IS NOT NULL
         DROP TABLE tabla_trayectoria_post_titulado;
 
@@ -602,6 +604,7 @@ def actualizar_tabla_trayectoria_titulados():
         t.anio_titulacion,
         t.rango_edad,
         m.cat_periodo AS anio_matricula_post,
+        m.cod_inst AS cod_inst_post,
         m.nomb_inst AS inst_destino,
         m.nomb_carrera AS carrera_destino,
         m.nivel_global AS nivel_estudio_post,
@@ -612,18 +615,25 @@ def actualizar_tabla_trayectoria_titulados():
     FROM tabla_dashboard_titulados t
     INNER JOIN vista_matricula_unificada m ON t.mrun = m.mrun
     WHERE t.cod_inst = 104
-    AND m.cat_periodo > t.anio_titulacion; -- Solo registros posteriores al título
-
-    -- Índices para optimizar el Dashboard de Titulados
-    CREATE INDEX idx_post_tit_mrun ON tabla_trayectoria_post_titulado(mrun);
-    CREATE INDEX idx_post_tit_filtros ON tabla_trayectoria_post_titulado(anio_ingreso_ecas, genero);
+      AND m.cod_inst <> 104
+      AND m.cat_periodo > t.anio_titulacion;
     """)
 
+    # 2. Queries para los índices (deben ir por separado)
+    query_idx1 = text("CREATE INDEX idx_post_tit_mrun ON tabla_trayectoria_post_titulado(mrun);")
+    query_idx2 = text("CREATE INDEX idx_post_tit_filtros ON tabla_trayectoria_post_titulado(anio_ingreso_ecas);")
+
     try:
-        with db_engine.connect() as conn:
-            conn.execute(query_insert)
-            conn.commit()
-            print("Tabla actualizada con la trayectoria de los titulados en ECAS.")
+        with db_engine.begin() as conn: # .begin() asegura un COMMIT automático al finalizar el bloque
+            # Ejecutar creación de tabla
+            conn.execute(query_tabla)
+            print("Tabla 'tabla_trayectoria_post_titulado' creada exitosamente.")
+            
+            # Ejecutar índices
+            conn.execute(query_idx1)
+            conn.execute(query_idx2)
+            print("Índices creados exitosamente.")
+            
     except Exception as e:
         print(f"Error al actualizar la tabla: {e}")
 
@@ -637,7 +647,7 @@ def actualizar_tabla_trayectoria_titulados():
 #actualizar_tabla_matriculas()
 #actualizar_tabla_egresados()
 #actualizar_tabla_titulados()
-#actualizar_tabla_trayectoria_titulados()
+actualizar_tabla_trayectoria_titulados()
 #actualizar_tabla_origenes_totales()
 #actualizar_tabla_titulados_desertores()
 #actualizar_tabla_desertores_ecas()

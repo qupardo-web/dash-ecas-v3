@@ -227,9 +227,12 @@ layout = dbc.Container([
         # Columna 3: Demora Ingreso (Sugerido para completar la fila)
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader("Años de Demora Ingreso ES", className="fw-bold small"),
+                dbc.CardHeader("Origen Escolar de Titulados (Dependencia)", className="fw-bold small"),
                 dbc.CardBody([
-                    dcc.Loading(dcc.Graph(id="graph-demora", style={"height": "350px"}))
+                    dcc.Loading(dcc.Graph(
+                        id="grafico-dependencia-titulados",
+                        style={"height": "350px"}, 
+                    ))
                 ])
             ], style=MAP_CARD_STYLE)
         ], width=4),
@@ -255,7 +258,20 @@ layout = dbc.Container([
                 ])
             ], style=MAP_CARD_STYLE)
         ], width=6),
-    ], className="mx-0 mt-4")
+    ], className="mx-0 mt-4"),
+
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader("Años de Demora Ingreso ES", className="fw-bold small"),
+                dbc.CardBody([
+                    dcc.Loading(dcc.Graph(id="graph-demora", style={"height": "350px"}))
+                ])
+            ], style=MAP_CARD_STYLE)
+        ], width=12),
+        
+        # Puedes agregar aquí otros dos Cols de width=4 si quieres completar esta fila
+    ], className="mx-0 mt-4"),
 
 ], fluid=True, style={"backgroundColor": "#f4f6f9", "minHeight": "100vh", "padding": "2rem"})
 
@@ -417,3 +433,27 @@ def update_statistical_graphs(region_id, n_clicks, cohorte, inst, jornada, gener
     fig_rural = create_ruralidad_comparison_chart(df_rural)
 
     return fig_dep, fig_ens, fig_dem, fig_nem_per, fig_nem_tit, fig_rural
+
+@callback(
+    Output('grafico-dependencia-titulados', 'figure'),
+    [Input("selected-region-store", "data"),    # Región seleccionada en el mapa
+     Input("btn-update", "n_clicks")],          # Botón actualizar
+    [State("filtro-cohorte", "value"),          # ID real del RangeSlider
+     State("filtro-jornada", "value"),          # ID real del Dropdown
+     State("filtro-genero", "value"),           # ID real del Dropdown
+     State("filtro-institucion", "value")]      # ID de la institución
+)
+def update_grafico_dependencia_titulados(region_id, n_clicks, cohorte, jornada, genero, inst):
+    # Usamos la función optimizada que creamos
+    df = get_titulados_por_dependencia_rango(
+        cohorte_range=cohorte,
+        cod_inst=inst,
+        jornada=jornada,
+        genero=genero,
+        region_id=region_id
+    )
+    
+    periodo_texto = f"Cohortes {cohorte[0]}-{cohorte[1]}"
+    
+    # Asegúrate de que esta función 'graficar_dependencia_titulados' esté importada
+    return graficar_dependencia_titulados(df, periodo_texto)

@@ -133,8 +133,8 @@ def create_interactive_map(df_plot, geojson, is_comuna, centro_dict, zoom_nivel=
         featureidkey=feat_key,
         color="cantidad",
         hover_name=h_name,
-        mapbox_style="white-bg",
-        color_continuous_scale="portland",
+        mapbox_style="open-street-map",
+        color_continuous_scale="tealrose",
         range_color=[0, df_plot['cantidad'].max() if df_plot['cantidad'].max() > 0 else 10],
         center=centro_limpio, 
         zoom=zoom_final     
@@ -273,4 +273,43 @@ def create_ruralidad_comparison_chart(df):
         template="plotly_white"
     )
     
+    return fig
+
+def graficar_dependencia_titulados(df, titulo_adicional=""):
+    if df is None or df.empty:
+        return go.Figure().update_layout(title="Sin datos para los filtros seleccionados")
+
+    # Ordenar de mayor a menor para que la barra más grande quede arriba
+    df = df.sort_values('total_titulados_periodo', ascending=True)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        y=df['tipo_establecimiento'],
+        x=df['total_titulados_periodo'],
+        orientation='h',
+        marker=dict(
+            color='#162f8a',  # Azul institucional
+            line=dict(color='rgba(0, 0, 0, 0.3)', width=1)
+        ),
+        text=df.apply(lambda row: f"{row['total_titulados_periodo']:,} ({row['porcentaje_del_periodo']}%)".replace(",", "."), axis=1),
+        textposition='outside',
+        hovertemplate="<b>%{y}</b><br>Titulados: %{x}<br>Promedio Anual: %{customdata}<extra></extra>",
+        customdata=df['promedio_anual_titulados']
+    ))
+
+    fig.update_layout(
+        xaxis=dict(
+            title="Cantidad de Titulados",
+            showgrid=True,
+            gridcolor='lightgray',
+            # Añadimos margen extra a la derecha para que el texto de las barras no se corte
+            range=[0, df['total_titulados_periodo'].max() * 1.25]
+        ),
+        yaxis=dict(title="Tipo de Establecimiento"),
+        plot_bgcolor='white',
+        height=300,
+        margin=dict(l=20, r=100, t=20, b=40)
+    )
+
     return fig

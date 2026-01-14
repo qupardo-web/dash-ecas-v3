@@ -44,65 +44,50 @@ map_provincias_rm = {
 }
 
 def get_total_titulados_y_matriculados(cohorte_range, cod_inst, jornada="Todas", genero="Todos", region_id=None):
-    # 1. Manejo de Rango de Cohorte
-    if isinstance(cohorte_range, list):
-        c_inicio, c_fin = cohorte_range[0], cohorte_range[1]
-        condicion_cohorte = "BETWEEN :c_inicio AND :c_fin"
-    else:
-        c_inicio, c_fin = cohorte_range, cohorte_range
-        condicion_cohorte = "= :c_inicio"
+    params = {
+        "cod_inst": cod_inst,
+        "c_inicio": cohorte_range[0] if isinstance(cohorte_range, list) else cohorte_range,
+        "c_fin": cohorte_range[1] if isinstance(cohorte_range, list) else cohorte_range,
+        "jornada": jornada,
+        "genero": genero,
+        "region": region_id
+    }
 
-    params = {  "cod_inst": cod_inst, 
-                "c_inicio": c_inicio, 
-                "c_fin": c_fin,
-                "genero": genero,
-                "region": region_id}
-
-    filtro_genero = "AND m.genero = :genero" if genero != "Todos" else ""
-
-    filtro_region = "AND e.cod_region = :region" if region_id != None else ""
+    # Filtros dinámicos consistentes
+    filtro_jornada = "AND u.jornada = :jornada" if jornada != "Todas" else ""
+    filtro_genero = "AND u.genero = :genero" if genero != "Todos" else ""
+    filtro_region = "AND g.cod_region = :region" if region_id is not None else ""
 
     sql_query = text(f"""
-    WITH UniversoIngreso AS (
-        -- Filtramos que el alumno EXISTA en la tabla de egresados para poder ser geolocalizado
+    WITH UniversoMatricula AS (
+        -- Identificamos el primer ingreso de cada alumno
         SELECT * FROM (
-            SELECT 
-                m.mrun, m.cohorte as anio_ingreso, m.jornada, m.genero,
-                ROW_NUMBER() OVER (PARTITION BY m.mrun ORDER BY m.periodo ASC) as rn
-            FROM tabla_matriculas_competencia_unificada m
-            -- Forzamos que el alumno tenga registro en egresados
-            INNER JOIN (
-                SELECT mrun, cod_region,
-                       ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_geo
-                FROM tabla_alumnos_egresados_unificada
-            ) e ON m.mrun = e.mrun AND e.rn_geo = 1
-            WHERE m.cod_inst = :cod_inst
-            {filtro_genero}
-            {filtro_region}
-        ) t WHERE rn = 1 
-        AND anio_ingreso {condicion_cohorte}
+            SELECT mrun, cohorte as anio_ingreso, jornada, genero,
+                   ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo ASC) as rn
+            FROM tabla_matriculas_competencia_unificada
+            WHERE cod_inst = :cod_inst
+        ) t WHERE rn = 1 AND anio_ingreso BETWEEN :c_inicio AND :c_fin
+    ),
+    Geolocalizacion AS (
+        -- Obtenemos la última región conocida de egreso
+        SELECT * FROM (
+            SELECT mrun, cod_region,
+                   ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_geo
+            FROM tabla_alumnos_egresados_unificada
+        ) e WHERE rn_geo = 1
     )
     SELECT 
-        COUNT(mrun) as total_matriculados,
-        (SELECT COUNT(DISTINCT tit.mrun) 
-         FROM tabla_dashboard_titulados tit 
-         WHERE tit.cod_inst = :cod_inst 
-         AND tit.mrun IN (SELECT mrun FROM UniversoIngreso)) as total_titulados
-    FROM UniversoIngreso
-    WHERE (jornada = :jornada OR :jornada = 'Todas')
+        COUNT(DISTINCT u.mrun) as total_m,
+        COUNT(DISTINCT t.mrun) as total_t
+    FROM UniversoMatricula u
+    INNER JOIN Geolocalizacion g ON u.mrun = g.mrun
+    LEFT JOIN tabla_dashboard_titulados t ON u.mrun = t.mrun AND t.cod_inst = :cod_inst
+    WHERE 1=1 {filtro_jornada} {filtro_genero} {filtro_region}
     """)
     
-    params["jornada"] = jornada
     df = pd.read_sql(sql_query, db_engine, params=params)
-
-    if df.empty:
-        return {"total_m": 0, "total_t": 0}
-
-    res = df.iloc[0]
-    return {
-        "total_m": int(res['total_matriculados'] or 0),
-        "total_t": int(res['total_titulados'] or 0)
-    }
+    res = df.iloc[0] if not df.empty else {'total_m': 0, 'total_t': 0}
+    return {"total_m": int(res['total_m']), "total_t": int(res['total_t'])}
 
 def get_distribucion_dependencia_rango(cohorte_range, cod_inst, genero="Todos", jornada="Todas", region_id=None):
     
@@ -199,7 +184,7 @@ def get_distribucion_dependencia_rango(cohorte_range, cod_inst, genero="Todos", 
 # print(get_distribucion_dependencia_rango(cohorte_range=[2007,2007], cod_inst=104, jornada='Vespertina'))
 # print(get_distribucion_dependencia_rango(cohorte_range=[2007,2007], cod_inst=104))
 
-def get_titulados_por_dependencia_rango(cohorte_range, cod_inst, genero="Todos", jornada="Todas", anio_titulacion_sel=None):
+def get_titulados_por_dependencia_rango(cohorte_range, cod_inst, genero="Todos", jornada="Todas", region_id=None, anio_titulacion_sel=None):
     # 1. Configuración de Rango (Cohorte)
     if isinstance(cohorte_range, list):
         c_inicio, c_fin = cohorte_range[0], cohorte_range[1]
@@ -210,38 +195,53 @@ def get_titulados_por_dependencia_rango(cohorte_range, cod_inst, genero="Todos",
         condicion_cohorte = "= :c_inicio"
         num_anios = 1
 
-    params = {"c_inicio": c_inicio, "c_fin": c_fin, "cod_inst": cod_inst, "genero": genero}
+    params = {
+        "c_inicio": c_inicio, 
+        "c_fin": c_fin, 
+        "cod_inst": cod_inst, 
+        "genero": genero,
+        "region": region_id
+    }
     
-    # Filtros dinámicos para SQL
-    filtro_anio_tit = "AND anio_titulacion = :anio_tit" if anio_titulacion_sel else ""
+    # Filtros dinámicos
+    filtro_anio_tit = "AND t.anio_titulacion = :anio_tit" if anio_titulacion_sel else ""
     if anio_titulacion_sel: params["anio_tit"] = anio_titulacion_sel
-    filtro_genero = "AND genero = :genero" if genero != "Todos" else ""
+    
+    filtro_genero = "AND m.genero = :genero" if genero != "Todos" else ""
+    filtro_region = "AND geo.cod_region = :region" if region_id is not None else ""
 
     sql_query = text(f"""
-    WITH PrimerIngresoEstable AS (
-        -- Identidad de cohorte: Primera vez en la institución (104)
+    WITH GeolocalizacionEstable AS (
+        -- Obtenemos la última región conocida de egreso para el filtrado geográfico
+        SELECT * FROM (
+            SELECT mrun, cod_region,
+                   ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_geo
+            FROM tabla_alumnos_egresados_unificada
+        ) e WHERE rn_geo = 1
+    ),
+    UniversoIngreso AS (
+        -- Primera matrícula en la institución (cohorte real) cruzada con geolocalización
         SELECT * FROM (
             SELECT 
-                mrun, cohorte as anio_ingreso,
-                ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo ASC) as rn_i
-            FROM tabla_matriculas_competencia_unificada
-            WHERE cod_inst = :cod_inst
+                m.mrun, m.cohorte as anio_ingreso,
+                ROW_NUMBER() OVER (PARTITION BY m.mrun ORDER BY m.periodo ASC) as rn_i
+            FROM tabla_matriculas_competencia_unificada m
+            INNER JOIN GeolocalizacionEstable geo ON m.mrun = geo.mrun
+            WHERE m.cod_inst = :cod_inst
+              {filtro_genero}
+              {filtro_region}
         ) t_ing WHERE rn_i = 1
     ),
     UltimaInfoTitulado AS (
-        -- Información al momento de titularse (incluye la jornada de titulación)
-        SELECT * FROM (
-            SELECT 
-                mrun, jornada, anio_titulacion, genero,
-                ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_titulacion DESC) as rn_t
-            FROM tabla_dashboard_titulados
-            WHERE cod_inst = :cod_inst
-            {filtro_anio_tit}
-            {filtro_genero}
-        ) t_tit WHERE rn_t = 1
+        -- Identificamos a los titulados dentro del universo filtrado
+        SELECT 
+            t.mrun, t.jornada, t.anio_titulacion
+        FROM tabla_dashboard_titulados t
+        WHERE t.cod_inst = :cod_inst
+          {filtro_anio_tit}
     ),
-    UltimoEgresoMedia AS (
-        -- Origen escolar estable
+    OrigenEscolar AS (
+        -- Dependencia administrativa del colegio de egreso
         SELECT * FROM (
             SELECT 
                 mrun, cod_dep_agrupado,
@@ -250,13 +250,13 @@ def get_titulados_por_dependencia_rango(cohorte_range, cod_inst, genero="Todos",
         ) e_sub WHERE rn_e = 1
     )
     SELECT 
-        t.jornada, 
-        e.cod_dep_agrupado,
-        c.anio_ingreso
-    FROM UltimaInfoTitulado t
-    INNER JOIN PrimerIngresoEstable c ON t.mrun = c.mrun
-    INNER JOIN UltimoEgresoMedia e ON t.mrun = e.mrun
-    WHERE c.anio_ingreso {condicion_cohorte}
+        tit.jornada, 
+        esc.cod_dep_agrupado,
+        uni.anio_ingreso
+    FROM UltimaInfoTitulado tit
+    INNER JOIN UniversoIngreso uni ON tit.mrun = uni.mrun
+    INNER JOIN OrigenEscolar esc ON tit.mrun = esc.mrun
+    WHERE uni.anio_ingreso {condicion_cohorte}
     """)
     
     df_raw = pd.read_sql(sql_query, db_engine, params=params)
@@ -264,28 +264,31 @@ def get_titulados_por_dependencia_rango(cohorte_range, cod_inst, genero="Todos",
     if df_raw.empty:
         return pd.DataFrame()
 
-    # 2. FILTRAR JORNADA EN PANDAS (Priorizando la jornada de titulación traída de 't')
+    # 2. Filtrar Jornada (Priorizando jornada de titulación)
     if jornada != "Todas":
         df_raw = df_raw[df_raw['jornada'] == jornada]
 
-    # 3. MAPEO Y RESUMEN
+    if df_raw.empty:
+        return pd.DataFrame()
+
+    # 3. Mapeo de Dependencia
     dep_map = {1: 'Municipal', 2: 'Part. Subvencionado', 3: 'Part. Pagado', 
-               4: 'Admin. Delegada', 5: 'SLEP'}
+                4: 'Admin. Delegada', 5: 'SLEP'}
     
     df_raw['cod_dep_agrupado'] = pd.to_numeric(df_raw['cod_dep_agrupado'], errors='coerce').astype('Int64')
     df_raw['tipo_establecimiento'] = df_raw['cod_dep_agrupado'].map(dep_map).fillna('Otro / Sin Información')
     
+    # 4. Agrupación y Cálculos
     df = df_raw.groupby('tipo_establecimiento').size().reset_index(name='total_titulados_periodo')
     df = df.sort_values('total_titulados_periodo', ascending=False)
 
-    # 4. CÁLCULOS
     df['promedio_anual_titulados'] = (df['total_titulados_periodo'] / num_anios).round(1)
     total_total = df['total_titulados_periodo'].sum()
     df['porcentaje_del_periodo'] = (df['total_titulados_periodo'] / total_total * 100).round(1) if total_total > 0 else 0
         
     return df
 
-#print(get_titulados_por_dependencia_rango(cohorte_range=[2007,2007], cod_inst=104))
+print(get_titulados_por_dependencia_rango(cohorte_range=[2007,2025], cod_inst=104))
 
 def get_titulados_por_dependencia_rango_jornada_ingreso(cohorte_range, cod_inst, genero="Todos", jornada="Todas", anio_titulacion_sel=None):
     # 1. Configuración de Rango (Cohorte)
@@ -899,86 +902,56 @@ def get_data_geografica_unificada_rango(cohorte_range, cod_inst, jornada="Todas"
 #print(get_data_geografica_unificada_rango(cohorte_range=[2007,2025], cod_inst=104))
 
 def get_kpi_ruralidad_seguimiento_rango(cohorte_range, cod_inst, jornada="Todas", genero="Todos", region_id=None):
-    # 1. Configuración de Rango de Cohorte
-    if isinstance(cohorte_range, list):
-        c_inicio, c_fin = cohorte_range[0], cohorte_range[1]
-        condicion_cohorte = "BETWEEN :c_inicio AND :c_fin"
-    else:
-        c_inicio, c_fin = cohorte_range, cohorte_range
-        condicion_cohorte = "= :c_inicio"
-
     params = {
         "cod_inst": cod_inst,
-        "c_inicio": c_inicio,
-        "c_fin": c_fin,
+        "c_inicio": cohorte_range[0] if isinstance(cohorte_range, list) else cohorte_range,
+        "c_fin": cohorte_range[1] if isinstance(cohorte_range, list) else cohorte_range,
+        "jornada": jornada,
+        "genero": genero,
         "region": region_id
     }
 
-    filtro_region = "AND cod_region = :region" if region_id != None else ""
+    filtro_jornada = "AND u.jornada = :jornada" if jornada != "Todas" else ""
+    filtro_genero = "AND u.genero = :genero" if genero != "Todos" else ""
+    filtro_region = "AND g.cod_region = :region" if region_id is not None else ""
 
     sql_query = text(f"""
-    WITH PrimerIngreso AS (
+    WITH UniversoMatricula AS (
         SELECT * FROM (
-            SELECT 
-                mrun, cohorte as anio_ingreso, jornada, genero, periodo,
-                ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo ASC) as rn_i
+            SELECT mrun, cohorte as anio_ingreso, jornada, genero,
+                   ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo ASC) as rn
             FROM tabla_matriculas_competencia_unificada
             WHERE cod_inst = :cod_inst
-        ) t WHERE rn_i = 1
+        ) t WHERE rn = 1 AND anio_ingreso BETWEEN :c_inicio AND :c_fin
     ),
-    UniversoValido AS (
-        SELECT mrun, anio_ingreso, jornada, genero
-        FROM PrimerIngreso
-        WHERE anio_ingreso {condicion_cohorte}
-    ),
-    CaracterizacionRural AS (
-        -- Extraemos ruralidad y región del último registro de egreso
+    Geolocalizacion AS (
+        -- Agregamos el índice de ruralidad a la geolocalización
         SELECT * FROM (
-            SELECT 
-                mrun, 
-                CAST(indice_rural AS INT) as cod_rural,
-                cod_region,
-                ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_e
+            SELECT mrun, cod_region, CAST(indice_rural AS INT) as cod_rural,
+                   ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_geo
             FROM tabla_alumnos_egresados_unificada
-            WHERE 1=1 {filtro_region}
-        ) e_sub WHERE rn_e = 1
-    ),
-    Titulacion AS (
-        SELECT DISTINCT mrun FROM tabla_dashboard_titulados WHERE cod_inst = :cod_inst
+        ) e WHERE rn_geo = 1
     )
     SELECT 
-        u.mrun, u.jornada, u.genero, c.cod_rural,
-        CASE WHEN t.mrun IS NOT NULL THEN 1 ELSE 0 END as es_titulado
-    FROM UniversoValido u
-    INNER JOIN CaracterizacionRural c ON u.mrun = c.mrun
-    LEFT JOIN Titulacion t ON u.mrun = t.mrun
+        g.cod_rural,
+        COUNT(DISTINCT u.mrun) as total_ingreso,
+        COUNT(DISTINCT t.mrun) as total_titulados
+    FROM UniversoMatricula u
+    INNER JOIN Geolocalizacion g ON u.mrun = g.mrun
+    LEFT JOIN tabla_dashboard_titulados t ON u.mrun = t.mrun AND t.cod_inst = :cod_inst
+    WHERE 1=1 {filtro_jornada} {filtro_genero} {filtro_region}
+    GROUP BY g.cod_rural
     """)
 
-    df_raw = pd.read_sql(sql_query, db_engine, params=params)
-
-    if df_raw.empty:
-        return pd.DataFrame()
-
-    # 2. Filtros en Pandas
-    df = df_raw.copy()
-    if jornada != "Todas":
-        df = df[df['jornada'] == jornada]
-    if genero != "Todos":
-        df = df[df['genero'] == genero]
-
+    df = pd.read_sql(sql_query, db_engine, params=params)
+    
     if df.empty:
-        return pd.DataFrame()
-
-    # 3. Agrupación y Mapeo
-    resumen = df.groupby('cod_rural').agg(
-        total_ingreso=('mrun', 'count'),
-        total_titulados=('es_titulado', 'sum')
-    ).reset_index()
+        return pd.DataFrame(columns=['Zona', 'total_ingreso', 'total_titulados'])
 
     map_rural = {0: "Urbano", 1: "Rural"}
-    resumen['Zona'] = resumen['cod_rural'].map(map_rural).fillna("Sin Información")
+    df['Zona'] = df['cod_rural'].map(map_rural).fillna("Sin Información")
     
-    return resumen[['Zona', 'total_ingreso', 'total_titulados']]
+    return df[['Zona', 'total_ingreso', 'total_titulados']].sort_values('total_ingreso', ascending=False)
 
 #print(get_kpi_ruralidad_seguimiento_rango(cohorte_range=[2007,2025], cod_inst=104))
 

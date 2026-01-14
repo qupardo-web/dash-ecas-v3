@@ -23,9 +23,9 @@ def get_movilidad_acreditacion_estricta(anio_seleccionado, jornada="Todas", tipo
         SELECT 
             mrun, anio_matricula_post, inst_destino,
             acreditada_inst, acre_inst_anio,
-            jornada_ecas, tipo_inst_1, anio_ultima_matricula_ecas,
+            jornada_ecas, tipo_inst_1, ultimo_periodo_ecas,
             ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as rn_ingreso
-        FROM [DBMatriculas].[dbo].[tabla_fuga_detallada_desertores]
+        FROM tabla_fuga_detallada_ecas
     )
     SELECT 
         CASE 
@@ -47,9 +47,9 @@ def get_movilidad_acreditacion_estricta(anio_seleccionado, jornada="Todas", tipo
         END AS categoria_movilidad,
         COUNT(DISTINCT f.mrun) AS cantidad_alumnos
     FROM PrimerIngresoPost f
-    INNER JOIN Acred_ECAS e ON f.anio_ultima_matricula_ecas = e.periodo
+    INNER JOIN Acred_ECAS e ON f.ultimo_periodo_ecas = e.periodo
     WHERE f.rn_ingreso = 1 
-      AND f.anio_ultima_matricula_ecas = :anio_seleccionado
+      AND f.ultimo_periodo_ecas = :anio_seleccionado
       AND f.anio_matricula_post = (:anio_seleccionado + 1)
     {f_jornada} {f_tipo}
     GROUP BY 
@@ -110,10 +110,10 @@ def get_metrics_acreditacion(periodo_seleccionado, jornada_filtro="Todas"):
     ),
     Desertores AS (
         SELECT COUNT(DISTINCT f.mrun) as total_desertores
-        FROM tabla_fuga_detallada_desertores f
+        FROM tabla_fuga_detallada_ecas f
         INNER JOIN UltimaJornada uj ON f.mrun = uj.mrun
         LEFT JOIN Titulados_ECAS tit ON f.mrun = tit.mrun
-        WHERE f.anio_ultima_matricula_ecas = :periodo_actual
+        WHERE f.ultimo_periodo_ecas = :periodo_actual
           AND tit.mrun IS NULL 
           {f_jornada.replace('UltimaJornada', 'uj')}
     ),
@@ -155,9 +155,9 @@ def get_detalle_instituciones_fuga(periodo_sel, categoria_sel, jornada="Todas"):
     PrimerIngresoPost AS (
         SELECT 
             mrun, inst_destino, acreditada_inst, acre_inst_anio,
-            anio_matricula_post, anio_ultima_matricula_ecas, jornada_ecas,
+            anio_matricula_post, ultimo_periodo_ecas, jornada_ecas,
             ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as rn_ingreso
-        FROM [DBMatriculas].[dbo].[tabla_fuga_detallada_desertores]
+        FROM [DBMatriculas].[dbo].[tabla_fuga_detallada_ecas]
     ),
     MovilidadClasificada AS (
         SELECT 
@@ -176,9 +176,9 @@ def get_detalle_instituciones_fuga(periodo_sel, categoria_sel, jornada="Todas"):
                 ELSE 'Menos Acreditada'
             END AS categoria_movilidad
         FROM PrimerIngresoPost f
-        INNER JOIN Acred_ECAS e ON f.anio_ultima_matricula_ecas = e.periodo
+        INNER JOIN Acred_ECAS e ON f.ultimo_periodo_ecas = e.periodo
         WHERE f.rn_ingreso = 1 
-          AND f.anio_ultima_matricula_ecas = :periodo
+          AND f.ultimo_periodo_ecas = :periodo
           AND f.anio_matricula_post = (:periodo + 1)
           {f_jornada}
     )
