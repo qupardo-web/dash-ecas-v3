@@ -47,10 +47,10 @@ def crear_grafico_reingreso_maximo(df, poblacion):
         color_discrete_sequence=px.colors.qualitative.Prism
     )
     
-    fig.update_traces(textinfo='percent+label')
+    fig.update_traces(textinfo='percent+label', textposition='inside')
     fig.update_layout(
         template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="right", x=1),
         margin=dict(t=50, b=20, l=20, r=20)
     )
     return fig
@@ -134,7 +134,7 @@ def crear_pictograma_trayectoria(df, titulo):
     # Rellenamos el espacio visual restante pero mostramos el TOTAL REAL de alumnos omitidos
     if current_idx < 100 or cantidad_otros > 0:
         iconos_restantes = max(0, 100 - current_idx)
-        label_otros = f"{porc_otros:.1f}% ({cantidad_otros:,}) - Otros / Resto".replace(",", ".")
+        label_otros = f"{porc_otros:.1f}% ({cantidad_otros:,}) - Otros".replace(",", ".")
         
         fig.add_trace(go.Scatter(
             # Si no quedan iconos por redondeo, enviamos None para que solo aparezca la leyenda
@@ -153,6 +153,16 @@ def crear_pictograma_trayectoria(df, titulo):
         legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
         margin=dict(t=80, b=100, l=20, r=20), height=600, plot_bgcolor='white'
     )
+
+    # fig.update_layout(
+    #     title=dict(text=f"<b>{titulo}</b>", x=0.5, y=0.95),
+    #     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10]),
+    #     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10], scaleanchor="x"),
+    #     legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
+    #     margin=dict(t=80, b=100, l=20, r=20),
+    #     height=600,
+    #     plot_bgcolor='white'
+    # )
 
     return fig
 
@@ -190,13 +200,11 @@ def crear_pictograma_continuidad(df, titulo):
             current_idx = end_idx
 
     fig.update_layout(
-        title=dict(text=f"<b>{titulo}</b>", x=0.5),
+        title=dict(text=f"<b>{titulo}</b>", x=0.5, y=0.95),
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10]),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10], scaleanchor="x"),
-        legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center"),
-        margin=dict(t=50, b=50, l=20, r=20),
-        height=650,
-        plot_bgcolor='white'
+        legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
+        margin=dict(t=80, b=100, l=20, r=20), height=600, plot_bgcolor='white'
     )
     return fig
 

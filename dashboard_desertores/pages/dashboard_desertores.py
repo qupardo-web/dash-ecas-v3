@@ -35,6 +35,17 @@ layout = dbc.Container([
             html.Div([
                 html.H4("Parámetros de Análisis", className="text-primary mb-4"),
                 html.Hr(),
+
+                html.Label("Regiones:", className="fw-bold"),
+                dcc.Dropdown(
+                    id='selector-regiones-universo', # Este es el ID que Dash reconoce ahora
+                    options=[], # Se poblarán mediante el callback que creamos antes
+                    multi=True,
+                    style={'minHeight': '30px'}, 
+                    optionHeight=50,
+                    placeholder="Seleccione para comparar...",
+                    className="mb-4"
+                ),
                 
                 # Selector de Instituciones (Comparativa)
                 html.Label("Instituciones de Competencia:", className="fw-bold"),
@@ -292,6 +303,16 @@ layout = dbc.Container([
 ], fluid=True)
 
 @callback(
+    Output('selector-regiones-universo', 'options'),
+    Input('selector-regiones-universo', 'id') # Gatillo de carga inicial
+)
+def poblar_regiones(_):
+    regiones = get_regiones_disponibles()
+    # Creamos el formato {label, value} que requiere Dash
+    options = [{'label': reg, 'value': reg} for reg in regiones]
+    return options
+
+@callback(
     [Output('selector-inst-supervivencia', 'options'),
      Output('selector-inst-supervivencia', 'value')],
     [Input('selector-instituciones-competencia', 'options')],
@@ -315,36 +336,39 @@ def sync_survival_dropdown(options_globales, valor_actual):
     [Output('selector-instituciones-competencia', 'options'),
      Output('selector-instituciones-competencia', 'value')],
     [Input('radio-jornada-desertores', 'value'),
-     Input('slider-top-n-desertores', 'value')],
-    [State('selector-instituciones-competencia', 'value')] # <-- PASO 1: Leer el valor actual
+     Input('slider-top-n-desertores', 'value'),
+     Input('selector-regiones-universo', 'value')],
+    [State('selector-instituciones-competencia', 'value')]
 )
-def actualizar_opciones_selector(jornada, top_n, valor_seleccionado_actual):
+def actualizar_opciones_selector(jornada, top_n, regiones_sel, valor_seleccionado_actual):
     NOMBRE_ECAS = "IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO"
 
-    # Obtenemos el nuevo ranking según la jornada seleccionada
+    # PASO 1: Enviar la lista completa de regiones a la función parametrizada
+    # Ya no tomamos regiones_sel[0], pasamos la lista completa (regiones_sel)
     df_ranking = get_ingresos_competencia_parametrizado(
         top_n=top_n, 
         anio_min=2007, 
         anio_max=2025, 
-        jornada=jornada
+        jornada=jornada,
+        region_sede=regiones_sel  # <--- Ahora soporta la lista completa
     )
     
-    if df_ranking.empty:
+    if df_ranking is None or df_ranking.empty:
         options_solo_ecas = [{'label': NOMBRE_ECAS, 'value': NOMBRE_ECAS}]
-        return options_solo_ecas, []
+        return options_solo_ecas, [NOMBRE_ECAS]
 
     nombres_competencia = [n for n in df_ranking['nomb_inst'].unique() 
-                          if NOMBRE_ECAS not in n.upper()]
+                          if NOMBRE_ECAS.upper() not in n.upper()]
     
-    # Construimos las nuevas opciones
-    options = [{'label': nombre, 'value': nombre} for nombre in nombres_competencia]
+    options = [{'label': nombre, 'value': nombre} for nombre in sorted(nombres_competencia)]
     options.insert(0, {'label': NOMBRE_ECAS, 'value': NOMBRE_ECAS})
     
-    if not valor_seleccionado_actual:
-        return options, []
-    
     nuevas_opciones_values = [opt['value'] for opt in options]
-    valor_persistente = [v for v in valor_seleccionado_actual if v in nuevas_opciones_values]
+    
+    if valor_seleccionado_actual:
+        valor_persistente = [v for v in valor_seleccionado_actual if v in nuevas_opciones_values]
+    else:
+        valor_persistente = ""
     
     return options, valor_persistente
 
@@ -355,13 +379,18 @@ def actualizar_opciones_selector(jornada, top_n, valor_seleccionado_actual):
      Input('slider-top-n-desertores', 'value'),
      Input('radio-jornada-desertores', 'value'),
      Input('radio-genero-desertores', 'value'),
-     Input('selector-instituciones-competencia', 'value')]
+     Input('selector-instituciones-competencia', 'value'),
+     Input('selector-regiones-universo', 'value')]
 )
-def update_charts_permanencia_e_ingreso(rango, top_n, jornada, genero, inst_manuales):
+def update_charts_permanencia_e_ingreso(rango, top_n, jornada, genero, inst_manuales, regiones_seleccionadas):
     
-    df_ingresos_raw = get_ingresos_competencia_parametrizado(top_n, rango[0], rango[1], jornada, genero)
-    df_perm_raw = get_permanencia_n_n1_competencia(rango[0], rango[1], jornada, genero)
-
+    df_ingresos_raw = get_ingresos_competencia_parametrizado(
+        top_n, rango[0], rango[1], jornada, genero, region_sede=regiones_seleccionadas
+    )
+    
+    df_perm_raw = get_permanencia_n_n1_competencia(
+        rango[0], rango[1], jornada, genero, region_sede=regiones_seleccionadas
+    )
 
     def filtrar_df(df, is_perm=False):
         if df is None or df.empty: return pd.DataFrame()
@@ -370,7 +399,8 @@ def update_charts_permanencia_e_ingreso(rango, top_n, jornada, genero, inst_manu
         else:
             mask_ecas = df['nomb_inst'].str.upper().str.contains("ESCUELA DE CONTADORES|ECAS", na=False)
             metrica = 'base_n' if is_perm else 'total_ingresos'
-            ranking = df[~mask_ecas].groupby('nomb_inst')[metrica].mean()\
+            # Agregamos .sum() en lugar de .mean() si quieres ver el volumen total multiregión
+            ranking = df[~mask_ecas].groupby('nomb_inst')[metrica].sum()\
                                     .sort_values(ascending=False).head(top_n).index.tolist()
             return df[df['nomb_inst'].isin(ranking) | mask_ecas].copy()
 

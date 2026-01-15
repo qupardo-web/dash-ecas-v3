@@ -288,7 +288,7 @@ def get_titulados_por_dependencia_rango(cohorte_range, cod_inst, genero="Todos",
         
     return df
 
-print(get_titulados_por_dependencia_rango(cohorte_range=[2007,2025], cod_inst=104))
+#print(get_titulados_por_dependencia_rango(cohorte_range=[2007,2025], cod_inst=104))
 
 def get_titulados_por_dependencia_rango_jornada_ingreso(cohorte_range, cod_inst, genero="Todos", jornada="Todas", anio_titulacion_sel=None):
     # 1. Configuración de Rango (Cohorte)
@@ -474,6 +474,11 @@ def get_demora_ingreso_total(cohorte_range, cod_inst, carrera="Todas", genero="T
     if df.empty:
         return pd.DataFrame(columns=['anios_demora', 'total_alumnos_periodo', 'porcentaje'])
 
+    casos_cero = df[df['anios_demora'] == 0]
+    if not casos_cero.empty:
+        print("Ejemplo de casos con 0 años de demora:")
+        print(casos_cero[['mrun', 'anio_ingreso', 'anio_egreso_media']].head())
+
     # 3. AGRUPAR Y CONTAR
     resumen = df.groupby('anios_demora').size().reset_index(name='total_alumnos_periodo')
     
@@ -483,6 +488,7 @@ def get_demora_ingreso_total(cohorte_range, cod_inst, carrera="Todas", genero="T
     resumen = resumen.sort_values('anios_demora')
     
     return resumen
+    
 #print(get_demora_ingreso_total(cohorte_range=[2007,2007], cod_inst=104, jornada='Vespertina'))
 
 #KPI para analizar si los alumnos con un buen rendimiento academico en su educación media

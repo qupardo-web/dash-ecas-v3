@@ -5,15 +5,29 @@ from typing import Optional, List
 
 db_engine = get_db_engine()
 
-def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025, jornada=None, genero="Todos"):
+def get_regiones_disponibles():
+    sql = "SELECT DISTINCT region_sede FROM tabla_matriculas_competencia_unificada ORDER BY region_sede ASC"
+    df = pd.read_sql(sql, db_engine)
+    return df['region_sede'].dropna().tolist()
+
+def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025, jornada=None, genero="Todos", region_sede=None):
     
-    params = {"top_n": top_n, "anio_min": anio_min, "anio_max": anio_max}
+    params = {"top_n": top_n, "anio_min": anio_min, "anio_max": anio_max, "region_sede": region_sede}
     
     filtro_jornada = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
     if filtro_jornada: params["jornada"] = jornada
 
     filtro_genero = "AND genero = :genero" if genero and genero != "Todos" else ""
     if filtro_genero: params["genero"] = genero
+
+    if region_sede and isinstance(region_sede, list) and len(region_sede) > 0:
+        region_keys = [f"reg{i}" for i in range(len(region_sede))]
+        for i, val in enumerate(region_sede):
+            params[f"reg{i}"] = val
+        
+        filtro_sede = f"AND (region_sede IN ({', '.join([':' + k for k in region_keys])}) OR cod_inst = 104)"
+    else:
+        filtro_sede = ""
 
     sql_query = f"""
     WITH base AS (
@@ -22,6 +36,7 @@ def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=202
         WHERE cohorte BETWEEN :anio_min AND :anio_max
         {filtro_jornada}
         {filtro_genero}
+        {filtro_sede}
         GROUP BY cohorte, cod_inst, nomb_inst
     ),
     ranking AS (
@@ -44,16 +59,18 @@ def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=202
     
     return df
 
-#print(get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025))
+#print(get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2007, region_sede="Tarapacá"))
 
-def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: None, genero:"Todos") -> pd.DataFrame:
+def get_permanencia_n_n1_competencia(anio_min= 2007, anio_max= 2025, jornada= None, genero="Todos", region_sede=None) -> pd.DataFrame:
+    
     anio_max_ajustado = min(anio_max, 2024)
     
     params = {
         "anio_min": anio_min,
         "anio_max": anio_max_ajustado,
         "anio_max_ext": anio_max_ajustado + 1,
-        "genero": genero
+        "genero": genero,
+        "jornada": jornada
     }
 
     # El filtro de jornada SOLO debe aplicar al universo inicial (Cohorte)
@@ -61,7 +78,14 @@ def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: None
     if filtro_jornada_cohorte: params["jornada"] = jornada
 
     filtro_genero = "AND genero = :genero" if genero and genero != "Todos" else ""
-    if filtro_genero: params["genero"] = genero
+
+    if region_sede and isinstance(region_sede, list) and len(region_sede) > 0:
+        region_keys = [f"reg{i}" for i in range(len(region_sede))]
+        for i, val in enumerate(region_sede):
+            params[f"reg{i}"] = val
+        filtro_sede = f"AND (region_sede IN ({', '.join([':' + k for k in region_keys])}) OR cod_inst = 104)"
+    else:
+        filtro_sede = ""
 
     sql_query = f"""
         WITH universo_cohortes AS (
@@ -71,10 +95,9 @@ def get_permanencia_n_n1_competencia(anio_min: int, anio_max: int, jornada: None
         AND periodo = cohorte
         {filtro_jornada_cohorte}
         {filtro_genero}
+        {filtro_sede}
     ),
     retencion_n1 AS (
-        -- Buscamos si el alumno está matriculado el año siguiente en la institución
-        -- NOTA: AQUÍ NO FILTRAMOS POR JORNADA para capturar cambios de jornada
         SELECT DISTINCT mrun, cod_inst, periodo
         FROM tabla_matriculas_competencia_unificada
         WHERE periodo BETWEEN :anio_min + 1 AND :anio_max_ext
@@ -160,7 +183,7 @@ def get_distribucion_cambio_jornada_ecas(anio_min, anio_max, jornada_filtro=None
 
     return df
 
-def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos", jornada="Todas"):
+def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos", jornada="Todas", region_sede="region_sede"):
     # Configuración por defecto de la institución
     if not instituciones:
         instituciones = ["IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO"]
@@ -178,18 +201,24 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         **inst_params
     }
 
-    # 3. Filtro dinámico de Género
     filtro_genero = ""
     if genero and genero != "Todos":
         filtro_genero = "AND genero = :genero"
         params["genero"] = genero
 
-    # 4. Filtro dinámico de Jornada
-    # Se aplica sobre la jornada registrada en la tabla física
     filtro_jornada = ""
     if jornada and jornada != "Todas":
         filtro_jornada = "AND jornada = :jornada"
         params["jornada"] = jornada
+
+    if region_sede and isinstance(region_sede, list) and len(region_sede) > 0:
+        region_keys = [f"reg{i}" for i in range(len(region_sede))]
+        for i, val in enumerate(region_sede):
+            params[f"reg{i}"] = val
+        filtro_sede = f"AND (region_sede IN ({', '.join([':' + k for k in region_keys])}) OR cod_inst = 104)"
+    else:
+        filtro_sede = ""
+        
 
     # 5. Query SQL con soporte multi-filtro
     sql_query = f"""
@@ -200,6 +229,7 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
           {filtro_jornada}
+          {filtro_sede}
         GROUP BY nomb_inst, cohorte
     ),
     matriculados_por_anio AS (
@@ -245,6 +275,8 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         df = pd.read_sql(text(sql_query), conn, params=params)
     
     return df
+
+#print(get_supervivencia_vs_titulacion_data(anios_rango=[2007,2007], region_sede="Metropolitana"))
 
 def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos"):
 

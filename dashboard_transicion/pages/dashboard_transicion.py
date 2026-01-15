@@ -159,7 +159,7 @@ layout = dbc.Container([
                         ),
                         dbc.Button("← Volver a Chile", id="btn-reset-map", color="link", className="p-0 text-decoration-none small")
                     ])
-                ], className="bg-white border-bottom-0 pt-3"),
+                ], className="bg-white border-bottom-0 pt-3", style={"background-color": "#162f8a"}),
                 dbc.CardBody([
                     dcc.Loading(
                         type="circle",
@@ -170,7 +170,7 @@ layout = dbc.Container([
                         )
                     )
                 ])
-            ], style=MAP_CARD_STYLE)
+            ])
         ], width=8),
 
         # COLUMNA DERECHA: Ahora centrada verticalmente

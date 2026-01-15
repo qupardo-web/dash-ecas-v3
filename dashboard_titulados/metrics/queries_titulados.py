@@ -59,7 +59,10 @@ def get_nivel_post_salida(rango_anios, tipo_poblacion="Todos", criterio="Primero
         params["rango_edad"] = rango_edad
 
     filtro_sql = " ".join(filtros)
-    order_by = "anio_matricula_post ASC"
+    if criterio == "Primero":
+        order_by = "anio_matricula_post ASC"
+    else:
+        order_by = "anio_matricula_post DESC"
 
     if tipo_poblacion == "Todos":
         subquery = "SELECT mrun, nivel_estudio_post, anio_matricula_post, anio_ingreso_ecas, genero, jornada_ecas, inst_destino, rango_edad FROM tabla_trayectoria_post_titulado UNION ALL SELECT mrun, nivel_estudio_post, anio_matricula_post, anio_ingreso_ecas, genero, jornada_ecas, inst_destino, rango_edad FROM tabla_fuga_detallada_ecas"
