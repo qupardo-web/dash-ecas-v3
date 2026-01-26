@@ -50,7 +50,7 @@ def crear_grafico_reingreso_maximo(df, poblacion):
     fig.update_traces(textinfo='percent+label', textposition='inside')
     fig.update_layout(
         template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="right", x=1),
+        legend=dict(orientation="h", y=-0.1, xanchor='center', x= 0.5),
         margin=dict(t=50, b=20, l=20, r=20)
     )
     return fig

@@ -5,6 +5,11 @@ SERVER = 'QUPARDO'
 DATABASE = 'DBMatriculas'
 DRIVER_NAME = 'ODBC Driver 17 for SQL Server' 
 
+SERVER2 = '192.168.1.194'
+USERNAME2 = 'jraby'
+DATABASE2 = 'umasnet'
+PASSWORD2 = '123'
+
 def get_db_engine():
     """Establece y devuelve el motor de conexión (Engine) a SQL Server usando Autenticación de Windows."""
     try:
@@ -26,7 +31,13 @@ def get_db_engine():
         print("="*50)
         return None
 
-if __name__ == '__main__':
-    # Prueba de conexión rápida
-    if get_db_engine():
-        print("conector_db.py: Conexión exitosa. Engine listo.")
+def get_db_engine_umasnet():
+        connection_string = (
+            f"mssql+pyodbc://{USERNAME2}:{PASSWORD2}@{SERVER2}/{DATABASE2}"
+            "?driver=ODBC+Driver+17+for+SQL+Server"
+            "&MultipleActiveResultSets=True"
+                )
+        engine = create_engine(connection_string)
+        
+        with engine.connect():
+            return engine

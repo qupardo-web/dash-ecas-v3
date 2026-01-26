@@ -979,10 +979,21 @@ def get_info_competencia():
     df = pd.read_sql(sql, db_engine)
     return df
 
-def get_jornadas_disponibles():
+def get_jornadas_por_institucion(cod_inst):
     """
-    Obtiene las jornadas únicas presentes en la base de datos.
+    Obtiene las jornadas únicas para una institución específica.
     """
-    sql = text("SELECT DISTINCT jornada FROM tabla_matriculas_competencia_unificada WHERE jornada IS NOT NULL")
-    df = pd.read_sql(sql, db_engine)
+    # Si se selecciona "Todas", traemos todas las jornadas de la tabla
+    if cod_inst == "all" or not cod_inst:
+        sql = text("SELECT DISTINCT jornada FROM tabla_matriculas_competencia_unificada WHERE jornada IS NOT NULL")
+        params = {}
+    else:
+        sql = text("""
+            SELECT DISTINCT jornada 
+            FROM tabla_matriculas_competencia_unificada 
+            WHERE cod_inst = :cod_inst AND jornada IS NOT NULL
+        """)
+        params = {"cod_inst": cod_inst}
+    
+    df = pd.read_sql(sql, db_engine, params=params)
     return df['jornada'].tolist()

@@ -5,6 +5,8 @@ import numpy as np
 from collections import defaultdict
 from typing import List, Optional, Tuple
 
+
+
 db_engine = get_db_engine()
 
 def get_fuga_multianual_trayectoria(db_conn, anio_n: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -339,7 +341,6 @@ def actualizar_tabla_matriculas():
             WHEN V.gen_alu = 2 THEN 'Mujer'
             ELSE 'Sin Información'
         END AS genero,
-        -- Rango de edad estático de ingreso
         COALESCE(E.rango_edad_ingreso, V.rango_edad) AS rango_edad,
         CAST(V.anio_ing_carr_ori AS INT) AS cohorte, 
         CAST(V.cat_periodo AS INT) AS periodo

@@ -5,6 +5,8 @@ from dashboard_desertores.pages.dashboard_desertores import layout as layout_des
 from dashboard_titulados.pages.dashboard_titulados import layout as layout_titulados
 from dashboard_acreditacion.pages.dashboard_acreditacion import layout as layout_acreditacion
 from dashboard_transicion.pages.dashboard_transicion import layout as layout_transicion
+from dashboard_analisis_docencia.pages.dashboard_ramos import layout as layout_rangos
+from dashboard_analisis_docencia.pages.dashboard_analisis_cohorte import layout as layout_cohortes
 
 # Inicialización de la App
 app = dash.Dash(
@@ -20,6 +22,8 @@ navbar = dbc.NavbarSimple(
         dbc.NavItem(dbc.NavLink("Titulados", href="/titulados")),
         dbc.NavItem(dbc.NavLink("Acreditacion", href="/acreditacion")),
         dbc.NavItem(dbc.NavLink("Transición", href="/transicion")),
+        dbc.NavItem(dbc.NavLink("Rangos", href="/rangos")),
+        dbc.NavItem(dbc.NavLink("Cohortes", href="/cohortes")),
     ],
     brand="ECAS - Analytics Hub",
     brand_href="/",
@@ -50,6 +54,10 @@ def display_page(pathname):
         return layout_acreditacion
     elif pathname == '/transicion':
         return layout_transicion
+    elif pathname == '/rangos':
+        return layout_rangos
+    elif pathname == '/cohortes':
+        return layout_cohortes
     elif pathname == '/' or pathname == '':
         return html.Div([
             dbc.Container([
@@ -59,7 +67,8 @@ def display_page(pathname):
                     dbc.Col(dbc.Button("Dashboard Desercion", href="/desertores", color="primary"), width="auto"),
                     dbc.Col(dbc.Button("Dashboard Ex Estudiantes", href="/titulados", color="primary"), width="auto"),
                     dbc.Col(dbc.Button("Dashboard Acreditacion", href="/acreditacion", color="primary"), width="auto"),
-                    dbc.Col(dbc.Button("Dashboard Transicion", href="/transicion", color="primary"), width="auto")
+                    dbc.Col(dbc.Button("Dashboard Transicion", href="/transicion", color="primary"), width="auto"),
+                    dbc.Col(dbc.Button("Dashboard Rangos", href="/ramos", color="primary"), width="auto")
                 ])
             ], className="py-5")
         ])

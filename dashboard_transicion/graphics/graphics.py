@@ -34,9 +34,9 @@ def create_donut_chart(df, title=""):
         hole=0.2,
         color_discrete_sequence=px.colors.qualitative.Pastel
     )
-    fig.update_traces(textinfo='percent', hovertemplate="<b>%{label}</b><br>Cant: %{value}<extra></extra>")
+    fig.update_traces(textinfo='percent', hovertemplate="<b>%{label}</b><br>Cant: %{value}<extra></extra>", textposition='inside')
     fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=True,
-                      legend=dict(orientation="h", y=-0.1))
+                      legend=dict(orientation="h", y=-0.3, xanchor='center', x= 0.5))
     return fig
 
 def create_bar_ensenianza(df):
@@ -109,15 +109,22 @@ def create_line_demora(df):
     return fig
 
 def create_interactive_map(df_plot, geojson, is_comuna, centro_dict, zoom_nivel=None):
-   
+    
     loc_col = "cod_comuna" if is_comuna else "cod_region"
-    feat_key = "properties.cut" if is_comuna else "properties.codregion"
     h_name = "nomb_comuna" if is_comuna else "nomb_region"
     
     if is_comuna:
-        df_plot[loc_col] = pd.to_numeric(df_plot[loc_col], errors='coerce').fillna(0).astype(int)
+        first_props = geojson['features'][0]['properties']
+        if 'cut' in first_props:
+            feat_key = "properties.cut"
+        elif 'cod_comuna' in first_props:
+            feat_key = "properties.cod_comuna"
+        else:
+            feat_key = "properties.cod_comuna" 
     else:
-        df_plot[loc_col] = pd.to_numeric(df_plot[loc_col], errors='coerce').fillna(0).astype(int)
+        feat_key = "properties.codregion"
+
+    df_plot[loc_col] = pd.to_numeric(df_plot[loc_col], errors='coerce').fillna(0).astype(int)
 
     centro_limpio = {
         "lat": centro_dict.get("lat", -35),
@@ -130,7 +137,7 @@ def create_interactive_map(df_plot, geojson, is_comuna, centro_dict, zoom_nivel=
         data_frame=df_plot,
         geojson=geojson,
         locations=loc_col,
-        featureidkey=feat_key,
+        featureidkey=feat_key, # Ahora es dinámico
         color="cantidad",
         hover_name=h_name,
         mapbox_style="open-street-map",
@@ -143,7 +150,8 @@ def create_interactive_map(df_plot, geojson, is_comuna, centro_dict, zoom_nivel=
     fig.update_layout(
         margin={"r": 0, "t": 0, "l": 0, "b": 0},
         mapbox=dict(
-            bounds={"west": -80, "east": -60, "south": -56, "north": -17}
+            # Aumentamos un poco los límites para que no se "escape" el mapa al navegar
+            bounds={"west": -85, "east": -65, "south": -58, "north": -15}
         )
     )
     
@@ -277,26 +285,29 @@ def create_ruralidad_comparison_chart(df):
 
 def graficar_dependencia_titulados(df, titulo_adicional=""):
     if df is None or df.empty:
-        return go.Figure().update_layout(title="Sin datos para los filtros seleccionados")
+        return go.Figure().update_layout(title="Sin datos")
 
-    # Ordenar de mayor a menor para que la barra más grande quede arriba
     df = df.sort_values('total_titulados_periodo', ascending=True)
 
-    fig = go.Figure()
+    # Creamos la etiqueta antes de graficar
+    df['etiqueta'] = df.apply(lambda r: f"{int(r['total_titulados_periodo']):,} ({r['porcentaje_del_periodo']}%)".replace(",", "."), axis=1)
 
-    fig.add_trace(go.Bar(
-        y=df['tipo_establecimiento'],
-        x=df['total_titulados_periodo'],
+    fig = px.bar(
+        df, 
+        x='total_titulados_periodo', 
+        y='tipo_establecimiento', 
         orientation='h',
-        marker=dict(
-            color='#162f8a',  # Azul institucional
-            line=dict(color='rgba(0, 0, 0, 0.3)', width=1)
-        ),
-        text=df.apply(lambda row: f"{row['total_titulados_periodo']:,} ({row['porcentaje_del_periodo']}%)".replace(",", "."), axis=1),
-        textposition='outside',
-        hovertemplate="<b>%{y}</b><br>Titulados: %{x}<br>Promedio Anual: %{customdata}<extra></extra>",
-        customdata=df['promedio_anual_titulados']
-    ))
+        text='etiqueta',
+        custom_data=['promedio_anual_titulados'],
+        color='tipo_establecimiento',
+        color_discrete_sequence=px.colors.qualitative.Pastel
+
+    )
+
+    fig.update_traces(
+        textposition='inside',
+        hovertemplate="<b>%{y}</b><br>Titulados: %{x}<br>Promedio Anual: %{customdata[0]}<extra></extra>"
+    )
 
     fig.update_layout(
         xaxis=dict(
@@ -307,6 +318,7 @@ def graficar_dependencia_titulados(df, titulo_adicional=""):
             range=[0, df['total_titulados_periodo'].max() * 1.25]
         ),
         yaxis=dict(title="Tipo de Establecimiento"),
+        showlegend=False,
         plot_bgcolor='white',
         height=300,
         margin=dict(l=20, r=100, t=20, b=40)
