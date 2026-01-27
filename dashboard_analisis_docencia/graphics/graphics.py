@@ -75,7 +75,7 @@ def crear_pie_charts_reprobados(df, ramo_nombre, titulo):
             values=df_gen['CANTIDAD_REPROBACIONES'], 
             name="Género", 
             hole=.4,
-            marker=dict(colors=['#162f8a', 'F4F1BB']), 
+            marker=dict(colors=['#162f8a', '#F4F1BB']), 
             textinfo='label+percent', 
             hovertemplate=(
                 "<b>Género:</b> %{label}<br>"
@@ -184,7 +184,8 @@ def generar_grafico_matriculas_totales(df):
             'Nuevos': '#FEE35D',  
             'Antiguos': '#162f8a' 
         },
-        text_auto='.3s'
+        text_auto='.3s',
+        custom_data= ['Segmento']
     )
 
     fig.update_layout(
@@ -203,7 +204,15 @@ def generar_grafico_matriculas_totales(df):
         height=450
     )
     
-    fig.update_traces(textposition='outside', cliponaxis=False)
+    fig.update_traces(
+        textposition='outside', 
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>Segmento:</b> %{customdata[0]}<br>" +
+            "<b>Cohorte:</b> %{x}<br>" +
+            "<b>Cantidad de alumnos:</b> %{y:,.0f}<extra></extra>"  
+        )
+    )
     
     return fig
 
@@ -252,8 +261,8 @@ def generar_grafico_matriculas_nuevas_dinamico(df, jornada_sel, genero_sel):
         textposition='outside',
         hovertemplate=(
             "<b>Segmento:</b> %{customdata[0]}<br>"
-            "<b>Año:</b> %{x}<br>"
-            "<b>Cantidad:</b> %{y}<br>"
+            "<b>Cohorte:</b> %{x}<br>"
+            "<b>Cantidad de alumnos:</b> %{y}<br>"
             "<extra></extra>"
         )
     )
@@ -270,12 +279,9 @@ def generar_grafico_matriculas_nuevas_dinamico(df, jornada_sel, genero_sel):
     return fig
 
 def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, rango_anios):
-    # 1. Validación de entrada
     if df_persistencia is None or df_persistencia.empty:
         return go.Figure().update_layout(title="Sin datos de persistencia")
 
-    # 2. Filtrado riguroso por rango
-    # Aseguramos que COHORTE sea de tipo entero para comparar
     df_persistencia['COHORTE'] = df_persistencia['COHORTE'].astype(int)
     df_p = df_persistencia[
         (df_persistencia['COHORTE'] >= rango_anios[0]) & 
@@ -285,15 +291,13 @@ def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, ran
     if df_p.empty:
         return go.Figure().update_layout(title=f"Sin persistencia para el rango {rango_anios}")
 
-    # 3. Promedio de Persistencia
     df_p_avg = df_p.groupby('ANIO_SEGUIMIENTO')['PORCENTAJE_PERSISTENCIA'].mean().reset_index()
     df_p_avg['ANIO_SEGUIMIENTO'] = pd.to_numeric(df_p_avg['ANIO_SEGUIMIENTO'])
     df_p_avg = df_p_avg.sort_values('ANIO_SEGUIMIENTO')
 
-    # 4. Procesar Titulación
     fig = go.Figure()
 
-    # Añadimos la traza de PERSISTENCIA primero
+    # Traza de Persistencia
     fig.add_trace(go.Scatter(
         x=df_p_avg['ANIO_SEGUIMIENTO'], 
         y=df_p_avg['PORCENTAJE_PERSISTENCIA'],
@@ -302,7 +306,6 @@ def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, ran
         mode='lines+markers'
     ))
 
-    # 5. Lógica de Titulación solo si hay datos
     if not df_titulacion.empty:
         df_titulacion['COHORTE'] = df_titulacion['COHORTE'].astype(int)
         df_t = df_titulacion[
@@ -311,33 +314,30 @@ def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, ran
         ].copy()
 
         if not df_t.empty:
-            # Obtenemos el N inicial desde df_p para calcular tasa real
-            # Buscamos la CANTIDAD_INICIAL donde ANIO_SEGUIMIENTO es 1 (el origen)
             df_ingresos = df_p[df_p['ANIO_SEGUIMIENTO'].astype(str) == '1'].groupby('COHORTE')['CANTIDAD_INICIAL'].sum().reset_index()
             
             if not df_ingresos.empty:
                 df_t = df_t.merge(df_ingresos, on='COHORTE', how='left')
-                df_t = df_t.sort_values(['COHORTE', 'ANIOS_DEMORA'])
-                
-                # Cálculo acumulado por cohorte
                 df_t['CUM_TIT'] = df_t.groupby('COHORTE')['CANTIDAD_TITULADOS'].cumsum()
                 df_t['PCT_TIT_COHORTE'] = (df_t['CUM_TIT'] / df_t['CANTIDAD_INICIAL']) * 100
                 
-                # Promedio del rango
                 df_t_avg = df_t.groupby('ANIOS_DEMORA')['PCT_TIT_COHORTE'].mean().reset_index()
-                df_t_avg = df_t_avg.sort_values('ANIOS_DEMORA')
-
+                
+                rango_completo = pd.DataFrame({'ANIOS_DEMORA': range(1, 8)})
+                df_t_final = pd.merge(rango_completo, df_t_avg, on='ANIOS_DEMORA', how='left')
+                
+                df_t_final['PCT_TIT_COHORTE'] = df_t_final['PCT_TIT_COHORTE'].ffill().fillna(0)
+                
                 fig.add_trace(go.Scatter(
-                    x=df_t_avg['ANIOS_DEMORA'], 
-                    y=df_t_avg['PCT_TIT_COHORTE'],
+                    x=df_t_final['ANIOS_DEMORA'], 
+                    y=df_t_final['PCT_TIT_COHORTE'],
                     name="Titulación Acumulada (% Real)",
-                    line=dict(color="#FF6600", width=3, dash='dash'),
+                    line=dict(color="#ebc934", width=2, dash='dash'),
                     fill='tozeroy',
-                    fillcolor='rgba(255, 102, 0, 0.2)',
-                    mode='lines+markers'
+                    fillcolor='rgba(255, 205, 0, 0.22)',
+                    mode='lines'
                 ))
 
-    # 6. Configuración de Layout
     fig.update_layout(
         template="plotly_white",
         xaxis=dict(title="Años transcurridos (T+n)", dtick=1, range=[0.8, 7.2]),
@@ -363,8 +363,16 @@ def generar_barras_vacantes(df_rango, rango_años):
     fig.update_layout(
         title=f"Ocupación Total {rango_años[0]}-{rango_años[1]}",
         template="plotly_white",
-        height=300,
-        margin=dict(t=50, b=50, l=20, r=20),
+        height=400,
+        margin=dict(t=80, b=50, l=20, r=20),
+    )
+
+    fig.update_traces(
+        textposition='outside',
+        hovertemplate=(
+            "<b>Categoria:</b> %{x}<br>" +
+            "<b>Cantidad:</b> %{y:,.0f}<extra></extra>"
+        )
     )
     return fig
 
@@ -372,54 +380,127 @@ def generar_pie_vias(df_rango):
     df_vias = df_rango.groupby('VIA_ADMISION')['CANTIDAD_MATRICULADOS'].sum().reset_index()
     
     fig = px.pie(
-        df_vias, names='VIA_ADMISION', values='CANTIDAD_MATRICULADOS',
-        hole=0.4,
-        color_discrete_sequence=px.colors.qualitative.Prism
+        df_vias, 
+        names='VIA_ADMISION', 
+        values='CANTIDAD_MATRICULADOS',
+        hole=0.2,
+        color_discrete_sequence=['#162f8a', '#F4F1BB', '#957AB8', '#ACD2ED', '#8093F1'],
+        
     )
     
     fig.update_layout(
         title="Distribución por Vía de Admisión",
         template="plotly_white",
         height=400,
-        margin=dict(t=50, b=100, l=10, r=10),
+        margin=dict(t=100, b=100, l=10, r=10),
         legend=dict(
             orientation="h",
-            yanchor="top", y=-0.1,
+            yanchor="top", y=-0.3,
             xanchor="center", x=0.5
         )
     )
+
+    fig.update_traces(
+        textposition='inside',
+        hovertemplate=(
+            "<b>Cantidad:</b> %{value}<extra></extra>"
+        )
+    )
+
     return fig
 
 def generar_grafico_area_formacion(df, rango_años):
-    df = df[(df['AÑO'] >= rango_años[0]) & (df['AÑO'] <= rango_años[1])].sort_values('AÑO')
     
-    # Derretimos el dataframe para Plotly Express
-    df_melt = df.melt(id_vars=['AÑO'], value_vars=['PROFESIONAL', 'UNIVERSITARIO', 'DOCTORADO', 'MAGISTER', 'LICENCIADO'],
-                      var_name='Grado/Título', value_name='Cantidad')
+    df_filtrado = df[(df['AÑO'] >= rango_años[0]) & (df['AÑO'] <= rango_años[1])].sort_values('AÑO')
+  
+    df_melt = df_filtrado.melt(
+        id_vars=['AÑO'], 
+        value_vars=['PROFESIONAL', 'UNIVERSITARIO', 'DOCTORADO', 'MAGISTER', 'LICENCIADO'],
+        var_name='Grado/Título', 
+        value_name='Cantidad'
+    )
     
-    fig = px.bar(df_melt, x='AÑO', y='Cantidad', color='Grado/Título',
-                 title="Distribución por Nivel de Formación Académica",
-                 barmode='stack', color_discrete_sequence=px.colors.qualitative.Prism)
+    fig = px.bar(
+        df_melt, 
+        x='AÑO', 
+        y='Cantidad', 
+        color='Grado/Título',
+        title="Distribución por Nivel de Formación Académica",
+        barmode='group', 
+        color_discrete_sequence=['#162f8a', '#F4F1BB', '#957AB8', '#ACD2ED', '#8093F1'],
+        text_auto=True,
+        custom_data=['Grado/Título']
+    )
 
     fig.update_layout(
-        template='plotly_white'
+        template='plotly_white',
+        xaxis=dict(dtick=1),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+        margin=dict(t=100, b=50, l=20, r=20)
+    )
+
+    fig.update_traces(
+        textposition='inside',
+        hovertemplate=(
+            "<b>Nivel de formación:</b> %{customdata[0]}<br>" +
+            "<b>Cantidad de docentes:</b> %{y}<br>" +
+            "<b>Año:</b> %{x}<br>" +
+            "<extra></extra>" 
+
+        )
     )
 
     return fig
 
 def generar_grafico_contrato(df, rango_años):
-    df = df[(df['AÑO'] >= rango_años[0]) & (df['AÑO'] <= rango_años[1])].sort_values('AÑO')
     
-    df_melt = df.melt(id_vars=['AÑO'], value_vars=['HONORARIO', 'CONTRATO', 'OTROS'],
-                      var_name='Tipo de Contrato', value_name='Cantidad')
+    df_filtrado = df[(df['AÑO'] >= rango_años[0]) & (df['AÑO'] <= rango_años[1])].sort_values('AÑO')
+
+    columnas_excluidas = ['AÑO', 'cantidad']
+    columnas_contrato = [col for col in df_filtrado.columns if col not in columnas_excluidas]
     
-    fig = px.bar(df_melt, x='AÑO', y='Cantidad', color='Tipo de Contrato',
-                 title="Evolución de Tipos de Contratación Docente",
-                 barmode='group', color_discrete_map={'HONORARIO': '#FF6600', 'CONTRATO': '#162f8a', 'OTROS': '#CCCCCC'})
+    df_melt = df_filtrado.melt(
+        id_vars=['AÑO'], 
+        value_vars=columnas_contrato,
+        var_name='Tipo de Contrato', 
+        value_name='Cantidad'
+    )
+    
+    fig = px.bar(
+        df_melt, 
+        x='AÑO', 
+        y='Cantidad', 
+        color='Tipo de Contrato',
+        title="Distribución por tipo de contrato",
+        barmode='group',
+        color_discrete_sequence=['#162f8a', '#F4F1BB', '#957AB8', '#ACD2ED', '#8093F1'],
+        text_auto=True,
+        custom_data = ['Tipo de Contrato']
+    )
 
     fig.update_layout(
-        template='plotly_white'
+        template='plotly_white',
+        xaxis=dict(dtick=1),
+        legend=dict(
+            orientation="h", 
+            yanchor="bottom", 
+            y=-0.4, 
+            xanchor="center", 
+            x=0.5,
+            title_text="" 
+        ),
+        margin=dict(t=100, b=50, l=20, r=20)
     )
+
+    fig.update_traces(
+        hovertemplate=(
+            "<b>Tipo de contrato:</b> %{customdata[0]}<br>" +
+            "<b>Cantidad de docentes: </b>%{y}<br>" +
+            "<b>Año:</b> %{x}<br>"
+            "<extra></extra>" 
+        ),
+    )
+
     return fig
 
 def generar_grafico_rotacion(df, rango_años):
@@ -427,18 +508,56 @@ def generar_grafico_rotacion(df, rango_años):
     
     fig = go.Figure()
  
-    fig.add_trace(go.Bar(x=df['AÑO'], y=df['Total_Academicos'], name="Total Académicos", 
-                         marker_color='rgba(22, 47, 138, 0.3)'))
+    fig.add_trace(
+        go.Bar(
+            x=df['AÑO'], 
+            y=df['Total_Academicos'], 
+            name="Total Académicos", 
+            marker_color='rgba(22, 47, 138, 0.3)',
+            hovertemplate=(
+                "<b>Año:</b> %{x}<br>" +
+                "<b>Cantidad de docentes:</b> %{y}<br>" +
+                "<extra></extra>"
+            )
+        )
+    )
     
 
-    fig.add_trace(go.Scatter(x=df['AÑO'], y=df['Tasa_Rotacion_Porcentaje'], name="Tasa Rotación %",
-                             line=dict(color='#FF6600', width=3), yaxis='y2'))
+    fig.add_trace(
+        go.Scatter(
+            x=df['AÑO'], 
+            y=df['Tasa_Rotacion_Porcentaje'], 
+            name="Tasa Rotación %",
+            line=dict(
+                color='#162f8a', 
+                width=3), 
+            yaxis='y2',
+            hovertemplate=(
+                "<b>Año:</b> %{x}<br>" +
+                "<b>Tasa de rotación:</b> %{y}<br>" +
+                "<extra></extra>"
+            )
+        )
+    )
     
     fig.update_layout(
         title="Tasa de Rotación Docente Anual",
-        yaxis=dict(title="Cantidad de Docentes"),
-        yaxis2=dict(title="Tasa de Rotación (%)", overlaying='y', side='right', range=[0, 100]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        yaxis=dict(
+            title="Cantidad de Docentes"
+        ),
+        yaxis2=dict(
+            title="Tasa de Rotación (%)", 
+            overlaying='y', 
+            side='right', 
+            range=[0, 100]
+        ),
+        legend=dict(
+            orientation="h", 
+            yanchor="bottom", 
+            y=1.02, 
+            xanchor="right", 
+            x=1
+        ),
         template='plotly_white'
     )
     return fig
@@ -464,7 +583,6 @@ def generar_grafico_horario(df, rango_años):
         hole=.4,
         marker=dict(colors=['#162f8a', '#565EB3', '#FEE35D']),
         textinfo='label+percent',
-        hovertemplate="<b>%{label}</b><br>Docentes: %{value}<br>% respecto al total: %{percent}<extra></extra>"
     )])
 
     fig.update_layout(
@@ -472,4 +590,14 @@ def generar_grafico_horario(df, rango_años):
         template="plotly_white",
         legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5)
     )
+
+    fig.update_traces(
+        hovertemplate = (
+            "<b>Tipo de horario:</b> %{label}<br>" +
+            "<b>Cantidad de docentes:</b> %{value}" +
+            "<extra></extra>" 
+
+        )
+    )
+
     return fig

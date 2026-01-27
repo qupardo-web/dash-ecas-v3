@@ -157,7 +157,7 @@ def get_detalle_instituciones_fuga(periodo_sel, categoria_sel, jornada="Todas"):
             mrun, inst_destino, acreditada_inst, acre_inst_anio,
             anio_matricula_post, ultimo_periodo_ecas, jornada_ecas,
             ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as rn_ingreso
-        FROM [DBMatriculas].[dbo].[tabla_fuga_detallada_ecas]
+        FROM tabla_fuga_detallada_ecas
     ),
     MovilidadClasificada AS (
         SELECT 

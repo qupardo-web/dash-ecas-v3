@@ -2,12 +2,13 @@ from sqlalchemy import create_engine
 import urllib
 
 SERVER = 'QUPARDO'
-DATABASE = 'DBMatriculas'
+DATABASE1 = 'DBMatriculas'
+DATABASE2 = 'DATOSACADEMICOS'
 DRIVER_NAME = 'ODBC Driver 17 for SQL Server' 
 
 SERVER2 = '192.168.1.194'
 USERNAME2 = 'jraby'
-DATABASE2 = 'umasnet'
+DATABASE3 = 'umasnet'
 PASSWORD2 = '123'
 
 def get_db_engine():
@@ -16,7 +17,7 @@ def get_db_engine():
         
         DRIVER = urllib.parse.quote_plus(DRIVER_NAME)
         
-        DB_URL = f"mssql+pyodbc://{SERVER}/{DATABASE}?driver={DRIVER}&trusted_connection=yes"
+        DB_URL = f"mssql+pyodbc://{SERVER}/{DATABASE2}?driver={DRIVER}&trusted_connection=yes"
         
         engine = create_engine(DB_URL, fast_executemany=True)
         
@@ -33,7 +34,7 @@ def get_db_engine():
 
 def get_db_engine_umasnet():
         connection_string = (
-            f"mssql+pyodbc://{USERNAME2}:{PASSWORD2}@{SERVER2}/{DATABASE2}"
+            f"mssql+pyodbc://{USERNAME2}:{PASSWORD2}@{SERVER2}/{DATABASE3}"
             "?driver=ODBC+Driver+17+for+SQL+Server"
             "&MultipleActiveResultSets=True"
                 )

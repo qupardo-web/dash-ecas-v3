@@ -31,8 +31,8 @@ layout = dbc.Container([
                 dcc.RangeSlider(
                     id='slider-años',
                     min=2015, max=2025, step=1,
-                    value=[2019, 2019],
-                    marks={i: str(i) for i in range(2015, 2026, 1)},
+                    value=[2020, 2020],
+                    marks={i: str(i) for i in range(2015, 2026, 2)},
                     className="mb-4"
                 ),
                 
@@ -312,8 +312,8 @@ layout = dbc.Container([
      Input('radio-genero', 'value'),
      Input('dropdown-ramos-primer-año', 'value')]
 )
-def manejar_dashboard_reprobados(años, jornada, genero, ramo_sel):
-    
+def manejar_dashboard_reprobados_primer_año(años, jornada, genero, ramo_sel):
+   
     df_base = query_reprobados_primer_anio_filtrada(jornada=jornada, genero=genero)
     
     df_rango = df_base[
@@ -321,12 +321,7 @@ def manejar_dashboard_reprobados(años, jornada, genero, ramo_sel):
         (df_base['COHORTE'] <= años[1])
     ].copy()
 
-    df_agrupado = df_rango.groupby(['COHORTE', 'CODRAMO']).agg({
-        'CANTIDAD_REPROBACIONES': 'sum',
-        'TASA_REPROBACION_P1': 'mean',  
-        'GENERO': 'first',
-        'JORNADA': 'first'
-    }).reset_index()
+    df_agrupado = df_rango.groupby(['COHORTE', 'CODRAMO'])['CANTIDAD_REPROBACIONES'].sum().reset_index()
 
     top_10_ramos = (
         df_agrupado.groupby('CODRAMO')['CANTIDAD_REPROBACIONES']
@@ -336,28 +331,24 @@ def manejar_dashboard_reprobados(años, jornada, genero, ramo_sel):
     )
 
     ramos_disponibles = sorted(df_rango['CODRAMO'].unique())
-
     opciones_dropdown = [{'label': 'Top 10 Ramos', 'value': 'Todos'}]
-    for r in ramos_disponibles:
-        opciones_dropdown.append({'label': r, 'value': r})
+    opciones_dropdown += [{'label': r, 'value': r} for r in ramos_disponibles]
 
     if ramo_sel == 'Todos' or ramo_sel is None or ramo_sel not in ramos_disponibles:
 
         df_top = df_agrupado[df_agrupado['CODRAMO'].isin(top_10_ramos)]
 
-
-
-        color_crit = 'JORNADA' if genero != 'Todos' else 'GENERO'
-
-        fig_barra = generar_grafico_apilado(df_top, color_by=color_crit)
+        fig_barra = generar_grafico_historico_apilado(df_top.rename(columns={'COHORTE': 'ANIO'}))
         
+        suffix = f"({años[0]})" if años[0] == años[1] else f"({años[0]}-{años[1]})"
+        fig_barra.update_layout(title=f"Top 10 Ramos con más Reprobaciones al 1er Año {suffix}")
+
         return fig_barra, opciones_dropdown, {'display': 'block'}, []
     
     else:
         df_especifico = df_rango[df_rango['CODRAMO'] == ramo_sel]
-        fig_pies = crear_pie_charts_reprobados(df_especifico, ramo_sel, titulo="Reprobados al Primer Año")
+        fig_pies = crear_pie_charts_reprobados(df_especifico, ramo_sel, titulo="Análisis de Reprobación 1er Año")
         
-
         return go.Figure(), opciones_dropdown, {'display': 'none'}, dcc.Graph(figure=fig_pies)
 
 @callback(

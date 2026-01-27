@@ -9,44 +9,41 @@ def crear_subplot_ingresos(df, jornada_sel, genero_sel):
     if df.empty:
         return go.Figure().update_layout(title="Sin datos")
 
-    if jornada_sel != "Todas" and genero_sel == "Todos":
-        df_gen = df.groupby('GENERO')['CANTIDAD'].sum().reset_index()
-
-        nombre_jornada = map_jor.get(jornada_sel, jornada_sel)
-
-        fig = go.Figure(data=[go.Pie(
-            labels=[map_gen.get(x, x) for x in df_gen['GENERO']],
-            values=df_gen['CANTIDAD'],
-            hole=.5,
-            marker=dict(colors=['#162f8a', 'F4F1BB']),
-            textinfo='label+percent', 
-            hovertemplate=(
-                "<b>Genero:</b> %{label}<br>"
-                "<b>Cantidad:</b> %{value}<br>"
-                "<extra></extra>"
-            ),
-            title_text=f"Distribución por jornada <br> <b>{nombre_jornada}</b>"
-        )])
-
-    elif genero_sel != "Todos" and jornada_sel == "Todas":
-
+    if genero_sel != "Todos":
         df_jor = df.groupby('JORNADA')['CANTIDAD'].sum().reset_index()
-
         nombre_genero = map_gen.get(genero_sel, genero_sel)
-
-        fig = go.Figure(data=[
-            go.Pie(
+        
+        fig = go.Figure(data=[go.Pie(
             labels=[map_jor.get(x, x) for x in df_jor['JORNADA']],
             values=df_jor['CANTIDAD'],
             hole=.5,
             marker=dict(colors=['#565EB3', '#FEE35D']),
             textinfo='label+percent', 
-            hovertemplate=(
-                "<b>Jornada:</b> %{label}<br>"
-                "<b>Cantidad:</b> %{value}<br>"
-                "<extra></extra>"
-            ),
-            title_text=f"Distribución por genero <br> <b>{nombre_genero}</b>"
+            hovertemplate="<b>Jornada:</b> %{label}<br>" + 
+                          "<b>Cantidad:</b> %{value}<extra></extra>",
+            title=dict(
+                text=f"Distribución por Jornada<br><b>{nombre_genero}</b>",
+                font=dict(size=14),
+                position="top center"
+            )
+        )])
+
+    elif jornada_sel != "Todas":
+        df_gen = df.groupby('GENERO')['CANTIDAD'].sum().reset_index()
+        nombre_jornada = map_jor.get(jornada_sel, jornada_sel)
+        
+        fig = go.Figure(data=[go.Pie(
+            labels=[map_gen.get(x, x) for x in df_gen['GENERO']],
+            values=df_gen['CANTIDAD'],
+            hole=.5,
+            marker=dict(colors=['#162f8a', '#F4F1BB']),
+            textinfo='label+percent', 
+            hovertemplate="<b>Género:</b> %{label}<br><b>Cantidad:</b> %{value}<extra></extra>",
+            title=dict(
+                text=f"Distribución por Género<br><b>{nombre_jornada}</b>",
+                font=dict(size=14),
+                position="top center"
+            )
         )])
 
     else:
@@ -63,30 +60,23 @@ def crear_subplot_ingresos(df, jornada_sel, genero_sel):
             labels=[map_gen.get(x, x) for x in df_gen['GENERO']], 
             values=df_gen['CANTIDAD'], hole=.4,
             textinfo='label+percent',
-            hovertemplate=(
-                "<b>Genero:</b> %{label}<br>"
-                "<b>Cantidad:</b> %{value}<br>"
-                "<extra></extra>"
-            ),
-            marker=dict(colors=['#162f8a', 'F4F1BB'])), 1, 1)
+            marker=dict(colors=['#162f8a', '#F4F1BB']),
+            hovertemplate="<b>Género:</b> %{label}<br><b>Cantidad:</b> %{value}<extra></extra>"
+        ), 1, 1)
 
         fig.add_trace(go.Pie(
             labels=[map_jor.get(x, x) for x in df_jor['JORNADA']], 
             values=df_jor['CANTIDAD'], hole=.4,
             textinfo='label+percent',
-            hovertemplate=(
-                "<b>Jornada:</b> %{label}<br>"
-                "<b>Cantidad:</b> %{value}<br>"
-                "<extra></extra>"
-            ),
-            marker=dict(colors=['#565EB3', '#FEE35D'])), 1, 2)
+            marker=dict(colors=['#565EB3', '#FEE35D']),
+            hovertemplate="<b>Jornada:</b> %{label}<br><b>Cantidad:</b> %{value}<extra></extra>"
+        ), 1, 2)
 
     fig.update_layout(
         height=450, 
         template="plotly_white", 
         margin=dict(t=30, b=20, l=20, r=20),
-        legend=dict(orientation="h", yanchor="bottom", xanchor="center", y=-0.1, x=0.5)
-
+        legend=dict(orientation="h", yanchor="bottom", xanchor="center", y=-0.2, x=0.5)
     )
     
     return fig
@@ -299,9 +289,13 @@ def crear_grafico_modalidad_origen(df, jornada_sel, genero_sel):
     if df.empty:
         return go.Figure().update_layout(title="Sin datos de modalidad")
 
-    if jornada_sel != "Todas" and genero_sel == "Todos":
+    nombre_jornada = map_jor.get(jornada_sel, jornada_sel)
+    nombre_genero = map_gen.get(genero_sel, genero_sel)
+
+    # Caso 1: Género específico seleccionado (M o F) 
+    if genero_sel != "Todos":
         df_plot = df.groupby('MODALIDAD')['CANTIDAD'].sum().reset_index()
-        nombre_jornada = map_jor.get(jornada_sel, jornada_sel)
+        nombre_titulo = "Hombres" if genero_sel == "M" else "Mujeres"
         
         fig = go.Figure(data=[go.Pie(
             labels=df_plot['MODALIDAD'],
@@ -312,14 +306,20 @@ def crear_grafico_modalidad_origen(df, jornada_sel, genero_sel):
             insidetextorientation='radial',
             hovertemplate="<b>Modalidad:</b> %{label}<br><b>Cantidad:</b> %{value}<extra></extra>",
             title=dict(
-                text=f"<b>{nombre_jornada}</b>",
-                position="top center"
+                text=f"<b>{nombre_titulo}</b>",
+                position="top center",
+                font=dict(
+                    family="Arial, sans-serif", 
+                    size=18,                   
+                    color="#162f8a"           
+                )
             )
         )])
 
-    elif genero_sel != "Todos" and jornada_sel == "Todas":
+    # Caso 2: Género es "Todos", pero Jornada es específica 
+    elif jornada_sel != "Todas":
         df_plot = df.groupby('MODALIDAD')['CANTIDAD'].sum().reset_index()
-        nombre_genero = map_gen.get(genero_sel, genero_sel)
+        nombre_jor = "Diurna" if jornada_sel == "D" else "Vespertina"
         
         fig = go.Figure(data=[go.Pie(
             labels=df_plot['MODALIDAD'],
@@ -330,11 +330,17 @@ def crear_grafico_modalidad_origen(df, jornada_sel, genero_sel):
             insidetextorientation='radial',
             hovertemplate="<b>Modalidad:</b> %{label}<br><b>Cantidad:</b> %{value}<extra></extra>",
             title=dict(
-                text=f"<b>{nombre_genero}</b>",
-                position="top center"
+                text=f"<b>Jornada {nombre_jor}</b>",
+                position="top center",
+                font=dict(
+                    family="Arial, sans-serif",
+                    size=18,                   
+                    color="#162f8a"            
+                )
             )
         )])
 
+    # Caso 3: Ambos en "Todos" -> Mostrar comparativo Hombres vs Mujeres
     else:
         df_m = df[df['GENERO'] == 'M'].groupby('MODALIDAD')['CANTIDAD'].sum().reset_index()
         df_f = df[df['GENERO'] == 'F'].groupby('MODALIDAD')['CANTIDAD'].sum().reset_index()
@@ -349,28 +355,26 @@ def crear_grafico_modalidad_origen(df, jornada_sel, genero_sel):
             labels=df_m['MODALIDAD'], 
             values=df_m['CANTIDAD'],
             textinfo='percent',
-            hovertemplate="<b>Hombres</b><br>Modalidad: %{label}<br>Cant: %{value}<extra></extra>",
+            hovertemplate="<b>Hombres</b><br><b>Modalidad:</b> %{label}<br><b>Cantidad:</b> %{value}<extra></extra>",
             marker=dict(colors=['#162f8a', '#565EB3', '#F4F1BB', '#FEE35D']),
-            textposition='inside'
-            )
-        , 1, 1),
-           
+            textposition='inside',
+            insidetextorientation='radial'
+        ), 1, 1)
 
         fig.add_trace(go.Pie(
             labels=df_f['MODALIDAD'], 
             values=df_f['CANTIDAD'],
             textinfo='percent',
-            hovertemplate="<b>Mujeres</b><br>Modalidad: %{label}<br>Cant: %{value}<extra></extra>",
+            hovertemplate="<b>Mujeres</b><br><b>Modalidad:</b> %{label}<br><b>Cant:</b> %{value}<extra></extra>",
             marker=dict(colors=['#162f8a', '#565EB3', '#F4F1BB', '#FEE35D']),
-            textposition='inside'
-            )
-        , 1, 2),
-            
+            textposition='inside',
+            insidetextorientation='radial'
+        ), 1, 2)
 
     fig.update_layout(
         height=450, 
         template="plotly_white", 
-        margin=dict(t=20, b=20, l=20, r=20),
+        margin=dict(t=30, b=20, l=20, r=20),
         legend=dict(orientation="h", yanchor="bottom", xanchor="center", y=-0.2, x=0.5)
     )
     
@@ -409,7 +413,6 @@ def crear_grafico_edad(df, jornada_sel, genero_sel):
                            color_discrete_map={'Diurna': '#565EB3', 'Vespertina': '#FEE35D'},
                            nbins=20)
 
-    # 3. Vista General (Stack por Jornada)
     else:
         df['JORNADA'] = df['JORNADA'].map(map_jor)
         etiqueta = "Jornada"

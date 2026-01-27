@@ -22,6 +22,8 @@ CARD_STYLE = {
 layout = dbc.Container([
 
     dcc.Store(id='store-data'),
+
+    html.Div(id='trigger-carga-inicial', style={'display': 'none'}),
     
     dbc.Row([
         dbc.Col(html.H4("Análisis General por Cohorte", className="text-center mb-4 border-bottom pb-2"), width=12)
@@ -80,16 +82,6 @@ layout = dbc.Container([
 
             )
         ], width=2),
-        
-        dbc.Col([
-            html.Br(),
-            dbc.Button("Actualizar", 
-                        id="btn-update", 
-                        style={"backgroundColor": "#162f8a", 
-                                "borderColor": "#162f8a", 
-                                "color": "white"}, 
-                        className="w-100")
-        ], width=2)
 
     ], className="mb-4 p-3 bg-white rounded shadow-sm mx-0 align-items-center", justify="center"),
 
@@ -154,10 +146,9 @@ layout = dbc.Container([
     [Output("store-data", "data"),
      Output("filtro-cohorte-analisis", "options"),
      Output("filtro-cohorte-analisis", "value")],
-    Input("btn-update", "n_clicks") 
+    Input("trigger-carga-inicial", "children") 
 )
 def inicializar_dashboard(_):
-    
     df_ingreso = obtener_distribucion_historica_ingreso()
     df_nacionalidad = obtener_distribucion_nacionalidad_ingreso()
     df_comuna = obtener_distribucion_comuna_historica()

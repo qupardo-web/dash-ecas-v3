@@ -22,7 +22,7 @@ navbar = dbc.NavbarSimple(
         dbc.NavItem(dbc.NavLink("Titulados", href="/titulados")),
         dbc.NavItem(dbc.NavLink("Acreditacion", href="/acreditacion")),
         dbc.NavItem(dbc.NavLink("Transición", href="/transicion")),
-        dbc.NavItem(dbc.NavLink("Rangos", href="/rangos")),
+        dbc.NavItem(dbc.NavLink("Analisis General", href="/analisis_general")),
         dbc.NavItem(dbc.NavLink("Cohortes", href="/cohortes")),
     ],
     brand="ECAS - Analytics Hub",
@@ -54,7 +54,7 @@ def display_page(pathname):
         return layout_acreditacion
     elif pathname == '/transicion':
         return layout_transicion
-    elif pathname == '/rangos':
+    elif pathname == '/analisis_general':
         return layout_rangos
     elif pathname == '/cohortes':
         return layout_cohortes
@@ -64,11 +64,12 @@ def display_page(pathname):
                 html.H1("Panel de Análisis Institucional", className="mt-5"),
                 html.P("Seleccione una métrica en la barra superior para comenzar."),
                 dbc.Row([
+                    dbc.Col(dbc.Button("Dashboard Cohortes", href="/cohortes", color="primary"), width="auto"),
                     dbc.Col(dbc.Button("Dashboard Desercion", href="/desertores", color="primary"), width="auto"),
                     dbc.Col(dbc.Button("Dashboard Ex Estudiantes", href="/titulados", color="primary"), width="auto"),
                     dbc.Col(dbc.Button("Dashboard Acreditacion", href="/acreditacion", color="primary"), width="auto"),
                     dbc.Col(dbc.Button("Dashboard Transicion", href="/transicion", color="primary"), width="auto"),
-                    dbc.Col(dbc.Button("Dashboard Rangos", href="/ramos", color="primary"), width="auto")
+                    dbc.Col(dbc.Button("Dashboard Analisis General", href="/analisis_general", color="primary"), width="auto"),
                 ])
             ], className="py-5")
         ])

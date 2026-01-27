@@ -33,7 +33,7 @@ def get_kpis_cabecera(rango_anios, jornada="Todas", genero="Todos", rango_edad="
 
     #4. Universo Total de abandono
     filtro_j_abandono = "AND jornada_ecas = :jornada" if jornada != "Todas" else ""
-    sql_abandono =f"SELECT COUNT(DISTINCT mrun) FROM tabla_abandono_total_desertores WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max {filtro_j_abandono} {filtro_g} {filtro_e}"
+    sql_abandono =f"SELECT COUNT(DISTINCT mrun) FROM tabla_abandono_total_ecas WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max {filtro_j_abandono} {filtro_g} {filtro_e}"
     
     with db_engine.connect() as conn:
         total_tit = conn.execute(text(sql_titulados), params).scalar() or 0
@@ -436,11 +436,10 @@ def get_trayectorias_desertores_completa(rango_anios, jornada="Todas", genero="T
 
         UNION ALL
 
-        -- PARTE 2: Los que abandonaron totalmente
         SELECT 
             mrun,
             'Abandono Total del Sistema' as trayectoria
-        FROM tabla_abandono_total_desertores
+        FROM tabla_abandono_total_ecas
         WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
         {" ".join(filtros_abandono)}
     )

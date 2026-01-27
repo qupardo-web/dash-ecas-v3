@@ -415,45 +415,46 @@ def update_charts_permanencia_e_ingreso(rango, top_n, jornada, genero, inst_manu
     )
 
 @callback(
-    [Output('grafico-permanencia-jornada', 'figure'),
-     Output('grafico-tiempo-descanso', 'figure'),
-     Output('grafico-supervivencia-titulacion', 'figure'),
-     Output('pie-fuga-1', 'figure'),
-     Output('pie-fuga-2', 'figure'),
-     Output('pie-fuga-3', 'figure'),
-     Output('grafico-gauge-titulacion-ext', 'figure'),
-     Output('grafico-gauge-exito-captacion', 'figure')],
+    Output('grafico-permanencia-jornada', 'figure'),
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-jornada-desertores', 'value'),
+     Input('radio-genero-desertores', 'value')]
+)
+def update_jornada_ecas(rango, jornada, genero):
+    df_cambio = get_distribucion_cambio_jornada_ecas(rango[0], rango[1], jornada, genero)
+    return create_cambio_jornada_charts(df_cambio)
+
+@callback(
+    [Output('grafico-supervivencia-titulacion', 'figure'),
+     Output('grafico-tiempo-descanso', 'figure')],
     [Input('slider-años-desertores', 'value'),
      Input('selector-inst-supervivencia', 'value'),
-     Input('radio-dimension-fuga', 'value'),
      Input('radio-jornada-desertores', 'value'),
-     Input('radio-genero-desertores', 'value')] 
+     Input('radio-genero-desertores', 'value')]
 )
-def update_bottom_section_reactive(rango, inst_surv, dim_fuga, jornada, genero):
-    
+def update_survival_and_rest(rango, inst_surv, jornada, genero):
     target_inst = inst_surv if inst_surv else "IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO"
-
-    #Grafico de cambio de jornada
-    df_cambio = get_distribucion_cambio_jornada_ecas(rango[0], rango[1], jornada, genero)
-    fig_cambio = create_cambio_jornada_charts(df_cambio)
-
-    #Grafico de tiempo de descanso antes de reingreso
-    df_descanso = get_tiempo_de_descanso_procesado(rango, jornada, genero)
-    fig_descanso = create_tiempo_descanso_horiz_chart(df_descanso)
-
-    #Grafico de supervivencia vs titulacion
+    
+    # Supervivencia
     df_survival = get_supervivencia_vs_titulacion_data(rango, [target_inst], genero, jornada)
     fig_surv = create_survival_graduation_chart(df_survival, target_inst)
+    
+    # Tiempo de descanso
+    df_descanso = get_tiempo_de_descanso_procesado(rango, jornada, genero)
+    fig_descanso = create_tiempo_descanso_horiz_chart(df_descanso)
+    
+    return fig_surv, fig_descanso
 
-    #Grafico de titulacion externa
-    df_metrica_ext = get_metrica_titulacion_externa(rango, jornada, genero)
-    fig_gauge = create_gauge_titulacion_externa(df_metrica_ext)
-
-    #Grafico de titulación interna para ex alumnos de otra institución
-    df_captacion = get_metrica_exito_captacion(rango, jornada, genero)
-    fig_gauge_int = create_gauge_exito_captacion(df_captacion)
-
-    # 3. Análisis de Destino (Fuga)
+@callback(
+    [Output('pie-fuga-1', 'figure'),
+     Output('pie-fuga-2', 'figure'),
+     Output('pie-fuga-3', 'figure')],
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-dimension-fuga', 'value'),
+     Input('radio-jornada-desertores', 'value'),
+     Input('radio-genero-desertores', 'value')]
+)
+def update_fuga_analysis(rango, dim_fuga, jornada, genero):
     figs_fuga = []
     titulos = ["1er Destino", "2do Destino", "3er Destino"]
     for i in range(1, 4):
@@ -466,5 +467,21 @@ def update_bottom_section_reactive(rango, inst_surv, dim_fuga, jornada, genero):
             top_n=6
         )
         figs_fuga.append(create_fuga_pie_chart(df_f, titulos[i-1]))
+    return figs_fuga[0], figs_fuga[1], figs_fuga[2]
 
-    return fig_cambio, fig_descanso, fig_surv, figs_fuga[0], figs_fuga[1], figs_fuga[2], fig_gauge, fig_gauge_int, 
+@callback(
+    [Output('grafico-gauge-titulacion-ext', 'figure'),
+     Output('grafico-gauge-exito-captacion', 'figure')],
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-jornada-desertores', 'value'),
+     Input('radio-genero-desertores', 'value')]
+)
+def update_success_gauges(rango, jornada, genero):
+   
+    df_metrica_ext = get_metrica_titulacion_externa(rango, jornada, genero)
+    fig_gauge = create_gauge_titulacion_externa(df_metrica_ext)
+
+    df_captacion = get_metrica_exito_captacion(rango, jornada, genero)
+    fig_gauge_int = create_gauge_exito_captacion(df_captacion)
+    
+    return fig_gauge, fig_gauge_int

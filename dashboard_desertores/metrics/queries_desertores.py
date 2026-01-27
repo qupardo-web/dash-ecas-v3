@@ -1,7 +1,8 @@
-from conn_db import get_db_engine
+from conn_db import *
 from sqlalchemy import text
 import pandas as pd
 from typing import Optional, List
+import time
 
 db_engine = get_db_engine()
 
@@ -10,8 +11,12 @@ def get_regiones_disponibles():
     df = pd.read_sql(sql, db_engine)
     return df['region_sede'].dropna().tolist()
 
+#print(get_regiones_disponibles())
+
 def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025, jornada=None, genero="Todos", region_sede=None):
     
+    inicio = time.time()
+
     params = {"top_n": top_n, "anio_min": anio_min, "anio_max": anio_max, "region_sede": region_sede}
     
     filtro_jornada = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
@@ -56,10 +61,14 @@ def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=202
 
     
     df = pd.read_sql(text(sql_query), db_engine, params=params)
+
+    fin = time.time()
+
+    #print(f"Tiempo total: {fin-inicio:.4f} segundos")
     
     return df
 
-#print(get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2007, region_sede="Tarapacá"))
+#print(get_ingresos_competencia_parametrizado(anio_min=2007, anio_max=2007))
 
 def get_permanencia_n_n1_competencia(anio_min= 2007, anio_max= 2025, jornada= None, genero="Todos", region_sede=None) -> pd.DataFrame:
     
@@ -182,6 +191,8 @@ def get_distribucion_cambio_jornada_ecas(anio_min, anio_max, jornada_filtro=None
         df = pd.read_sql(text(sql_query), conn, params=params)
 
     return df
+
+#print(get_distribucion_cambio_jornada_ecas(anio_min=2007, anio_max=2025))
 
 def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos", jornada="Todas", region_sede="region_sede"):
     # Configuración por defecto de la institución
@@ -418,9 +429,10 @@ def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", 
 #print(get_tiempo_de_descanso_procesado(rango_anios=[2007,2007]))
 
 def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
+    
     params = {
-        "anio_min": rango_anios[0],
-        "anio_max": rango_anios[1]
+        "anio_min": int(rango_anios[0]),
+        "anio_max": int(rango_anios[1])
     }
 
     filtro_jornada = "AND p.jornada = :jornada" if jornada != "Todas" else ""
@@ -431,7 +443,6 @@ def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
 
     sql_query = f"""
     WITH estudiantes_captados AS (
-        -- Estudiantes que entraron a ECAS en el rango pero tenían matrícula previa en otro lado
         SELECT DISTINCT p.mrun, p.genero, p.jornada, p.cohorte
         FROM tabla_matriculas_competencia_unificada p
         WHERE p.cod_inst = 104
@@ -439,7 +450,7 @@ def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
           {filtro_jornada}
           {filtro_genero}
           AND EXISTS (
-              SELECT 1 FROM vista_matricula_unificada v
+              SELECT 1 FROM matriculas_mrun v
               WHERE v.mrun = p.mrun 
                 AND v.cat_periodo < p.cohorte 
                 AND v.cod_inst <> 104

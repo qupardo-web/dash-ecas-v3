@@ -13,9 +13,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 
 root_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
 
-path_regiones = os.path.join(root_dir, "Regional.geojson")
-path_comunas = os.path.join(root_dir, "Comunas_de_Chile.geojson")
-path_comunas_v2 = os.path.join(root_dir, "comunas.geojson")
+path_regiones = os.path.join(root_dir, "jsons/Regional.geojson")
+path_comunas = os.path.join(root_dir, "jsons/Comunas_de_Chile.geojson")
+path_comunas_v2 = os.path.join(root_dir, "jsons/comunas.geojson")
 
 with open(path_regiones, encoding='utf-8') as f:
     geojson_regiones = json.load(f)
