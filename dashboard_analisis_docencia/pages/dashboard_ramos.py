@@ -313,7 +313,6 @@ layout = dbc.Container([
      Input('dropdown-ramos-primer-año', 'value')]
 )
 def manejar_dashboard_reprobados_primer_año(años, jornada, genero, ramo_sel):
-   
     df_base = query_reprobados_primer_anio_filtrada(jornada=jornada, genero=genero)
     
     df_rango = df_base[
@@ -335,20 +334,18 @@ def manejar_dashboard_reprobados_primer_año(años, jornada, genero, ramo_sel):
     opciones_dropdown += [{'label': r, 'value': r} for r in ramos_disponibles]
 
     if ramo_sel == 'Todos' or ramo_sel is None or ramo_sel not in ramos_disponibles:
-
         df_top = df_agrupado[df_agrupado['CODRAMO'].isin(top_10_ramos)]
-
         fig_barra = generar_grafico_historico_apilado(df_top.rename(columns={'COHORTE': 'ANIO'}))
-        
         suffix = f"({años[0]})" if años[0] == años[1] else f"({años[0]}-{años[1]})"
         fig_barra.update_layout(title=f"Top 10 Ramos con más Reprobaciones al 1er Año {suffix}")
-
         return fig_barra, opciones_dropdown, {'display': 'block'}, []
     
     else:
         df_especifico = df_rango[df_rango['CODRAMO'] == ramo_sel]
-        fig_pies = crear_pie_charts_reprobados(df_especifico, ramo_sel, titulo="Análisis de Reprobación 1er Año")
-        
+        fig_pies = crear_pie_charts_reprobados(
+            df_especifico, ramo_sel, "Análisis de Reprobación 1er Año", 
+            jornada_sel=jornada, genero_sel=genero
+        )
         return go.Figure(), opciones_dropdown, {'display': 'none'}, dcc.Graph(figure=fig_pies)
 
 @callback(
@@ -362,7 +359,6 @@ def manejar_dashboard_reprobados_primer_año(años, jornada, genero, ramo_sel):
      Input('dropdown-ramos-reprobados-totales', 'value')]
 )
 def manejar_reprobados_totales(años, jornada, genero, ramo_sel):
-    # 1. Obtener datos filtrados de la base de datos
     df_base = query_reprobados_historico_simple(jornada=jornada, genero=genero)
     
     df_rango = df_base[
@@ -387,20 +383,17 @@ def manejar_reprobados_totales(años, jornada, genero, ramo_sel):
 
     if ramo_sel == 'Todos' or ramo_sel is None:
         df_top = df_agrupado[df_agrupado['CODRAMO'].isin(top_10_ramos)]
-        
         fig_barra = generar_grafico_historico_apilado(df_top)
-
-        if años[0] == años[1]:
-            fig_barra.update_layout(title=f"Top 10 de Ramos con más reprobaciones ({años[0]})")
-        else:
-            fig_barra.update_layout(title=f"Top 10 de Ramos con más reprobaciones ({años[0]}-{años[1]})")
-        
+        suffix = f"({años[0]})" if años[0] == años[1] else f"({años[0]}-{años[1]})"
+        fig_barra.update_layout(title=f"Top 10 de Ramos con más reprobaciones {suffix}")
         return fig_barra, opciones, {'display': 'block'}, []
     
     else:
         df_especifico = df_rango[df_rango['CODRAMO'] == ramo_sel]
-        fig_pies = crear_pie_charts_reprobados(df_especifico, ramo_sel, titulo="Reprobados Totales")
-        
+        fig_pies = crear_pie_charts_reprobados(
+            df_especifico, ramo_sel, "Reprobados Totales", 
+            jornada_sel=jornada, genero_sel=genero
+        )
         return go.Figure(), opciones, {'display': 'none'}, dcc.Graph(figure=fig_pies)
 
 @callback(

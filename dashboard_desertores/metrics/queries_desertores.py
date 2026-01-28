@@ -82,7 +82,6 @@ def get_permanencia_n_n1_competencia(anio_min= 2007, anio_max= 2025, jornada= No
         "jornada": jornada
     }
 
-    # El filtro de jornada SOLO debe aplicar al universo inicial (Cohorte)
     filtro_jornada_cohorte = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
     if filtro_jornada_cohorte: params["jornada"] = jornada
 

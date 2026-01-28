@@ -54,67 +54,84 @@ def generar_grafico_apilado(df, color_by='GENERO'):
     
     return fig
 
-def crear_pie_charts_reprobados(df, ramo_nombre, titulo):
-    
+def crear_pie_charts_reprobados(df, ramo_nombre, titulo, jornada_sel="Todas", genero_sel="Todos"):
+    if df.empty:
+        return go.Figure().update_layout(title="Sin datos de reprobación")
+
+    # 1. Preparación de datos y mapeos
     df_plot = df.copy()
     df_plot['GENERO'] = df_plot['GENERO'].map(mapeo_gen).fillna(df_plot['GENERO'])
     df_plot['JORNADA'] = df_plot['JORNADA'].map(mapeo_jor).fillna(df_plot['JORNADA'])
+    total_reprobaciones = int(df_plot['CANTIDAD_REPROBACIONES'].sum())
 
-    total_reprobaciones = df_plot['CANTIDAD_REPROBACIONES'].sum()
-
-    fig = make_subplots(
-        rows=1, cols=2, 
-        specs=[[{'type': 'domain'}, {'type': 'domain'}]],
-        subplot_titles=(f"<b>Género</b><br>{ramo_nombre}", f"<b>Jornada</b><br>{ramo_nombre}")
-    )
-
-    df_gen = df_plot.groupby('GENERO')['CANTIDAD_REPROBACIONES'].sum().reset_index()
-    fig.add_trace(
-        go.Pie(
-            labels=df_gen['GENERO'], 
-            values=df_gen['CANTIDAD_REPROBACIONES'], 
-            name="Género", 
-            hole=.4,
-            marker=dict(colors=['#162f8a', '#F4F1BB']), 
-            textinfo='label+percent', 
-            hovertemplate=(
-                "<b>Género:</b> %{label}<br>"
-                "<b>Cantidad Reprobados:</b> %{value}<br>"
-                "<b>Porcentaje Reprobados:</b> %{percent}<br>"
-                "<extra></extra>"
-            )
-        ),
-        1, 1
-    )
-
-    df_jor = df_plot.groupby('JORNADA')['CANTIDAD_REPROBACIONES'].sum().reset_index()
-    fig.add_trace(
-        go.Pie(
+    # --- CASO 1: Género seleccionado (M o F) -> Mostrar Distribución por JORNADA ---
+    if genero_sel != "Todos":
+        df_jor = df_plot.groupby('JORNADA')['CANTIDAD_REPROBACIONES'].sum().reset_index()
+        nombre_filtro = mapeo_gen.get(genero_sel, genero_sel)
+        
+        fig = go.Figure(data=[go.Pie(
             labels=df_jor['JORNADA'], 
             values=df_jor['CANTIDAD_REPROBACIONES'], 
-            name="Jornada", 
-            hole=.4,
+            hole=.5,
             marker=dict(colors=['#565EB3', '#FEE35D']),
             textinfo='label+percent',
-            hovertemplate=(
-                "<b>Jornada:</b> %{label}<br>"
-                "<b>Cantidad Reprobados:</b> %{value}<br>"
-                "<b>Porcentaje Reprobados:</b> %{percent}<br>"
-                "<extra></extra>"
-            )
-        ),
-        1, 2
-    )
+            hovertemplate="<b>Jornada:</b> %{label}<br><b>Cant:</b> %{value}<extra></extra>",
+        )])
+        annotations = [dict(text=f"Total<br><b>{total_reprobaciones}</b>", x=0.5, y=0.5, font_size=18, showarrow=False)]
 
+    # --- CASO 2: Jornada seleccionada (D o V) -> Mostrar Distribución por GÉNERO ---
+    elif jornada_sel != "Todas":
+        df_gen = df_plot.groupby('GENERO')['CANTIDAD_REPROBACIONES'].sum().reset_index()
+        nombre_filtro = mapeo_jor.get(jornada_sel, jornada_sel)
+        
+        fig = go.Figure(data=[go.Pie(
+            labels=df_gen['GENERO'], 
+            values=df_gen['CANTIDAD_REPROBACIONES'], 
+            hole=.5,
+            marker=dict(colors=['#162f8a', '#F4F1BB']),
+            textinfo='label+percent',
+            hovertemplate="<b>Género:</b> %{label}<br><b>Cant:</b> %{value}<extra></extra>",
+        )])
+        annotations = [dict(text=f"Total<br><b>{total_reprobaciones}</b>", x=0.5, y=0.5, font_size=18, showarrow=False)]
+
+    # --- CASO 3: Sin filtros específicos -> Subplots comparativos ---
+    else:
+        df_gen = df_plot.groupby('GENERO')['CANTIDAD_REPROBACIONES'].sum().reset_index()
+        df_jor = df_plot.groupby('JORNADA')['CANTIDAD_REPROBACIONES'].sum().reset_index()
+
+        fig = make_subplots(
+            rows=1, cols=2, 
+            specs=[[{'type': 'domain'}, {'type': 'domain'}]],
+            subplot_titles=("Distribución por Género", "Distribución por Jornada")
+        )
+
+        fig.add_trace(go.Pie(
+            labels=df_gen['GENERO'], values=df_gen['CANTIDAD_REPROBACIONES'], 
+            hole=.4, marker=dict(colors=['#162f8a', '#F4F1BB']),
+            textinfo='label+percent',
+            hovertemplate="<b>Género:</b> %{label}<br>Cant: %{value}<extra></extra>"
+        ), 1, 1)
+
+        fig.add_trace(go.Pie(
+            labels=df_jor['JORNADA'], values=df_jor['CANTIDAD_REPROBACIONES'], 
+            hole=.4, marker=dict(colors=['#565EB3', '#FEE35D']),
+            textinfo='label+percent',
+            hovertemplate="<b>Jornada:</b> %{label}<br>Cant: %{value}<extra></extra>"
+        ), 1, 2)
+        
+        annotations = [
+            dict(text=f"Total<br><b>{total_reprobaciones}</b>", x=0.222, y=0.45, font_size=16, showarrow=False),
+            dict(text=f"Total<br><b>{total_reprobaciones}</b>", x=0.777, y=0.45, font_size=16, showarrow=False)
+        ]
+
+    # Ajustes finales del Layout
     fig.update_layout(
-        title_text=f"{titulo}: {ramo_nombre}",
+        title_text=f"<b>{titulo}</b>: {ramo_nombre}",
         title_x=0.5,
         template="plotly_white",
+        height=450,
         showlegend=False,
-        annotations=[
-            dict(text=f"Total<br><b>{int(total_reprobaciones)}</b>", x=0.222, y=0.45, font_size=18, showarrow=False),
-            dict(text=f"Total<br><b>{int(total_reprobaciones)}</b>", x=0.777, y=0.45, font_size=18, showarrow=False)
-        ],
+        annotations=annotations,
         margin=dict(t=60, b=20, l=20, r=20)
     )
     
@@ -280,7 +297,7 @@ def generar_grafico_matriculas_nuevas_dinamico(df, jornada_sel, genero_sel):
 
 def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, rango_anios):
     if df_persistencia is None or df_persistencia.empty:
-        return go.Figure().update_layout(title="Sin datos de persistencia")
+        return go.Figure().update_layout(title="Sin datos de retención")
 
     df_persistencia['COHORTE'] = df_persistencia['COHORTE'].astype(int)
     df_p = df_persistencia[
@@ -289,7 +306,7 @@ def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, ran
     ].copy()
 
     if df_p.empty:
-        return go.Figure().update_layout(title=f"Sin persistencia para el rango {rango_anios}")
+        return go.Figure().update_layout(title=f"Sin retención para el rango {rango_anios}")
 
     df_p_avg = df_p.groupby('ANIO_SEGUIMIENTO')['PORCENTAJE_PERSISTENCIA'].mean().reset_index()
     df_p_avg['ANIO_SEGUIMIENTO'] = pd.to_numeric(df_p_avg['ANIO_SEGUIMIENTO'])
@@ -301,9 +318,14 @@ def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, ran
     fig.add_trace(go.Scatter(
         x=df_p_avg['ANIO_SEGUIMIENTO'], 
         y=df_p_avg['PORCENTAJE_PERSISTENCIA'],
-        name="Persistencia (Matrícula + Titulados)",
+        name="Retención",
         line=dict(color="#162f8a", width=4),
-        mode='lines+markers'
+        mode='lines+markers',
+        hovertemplate=(
+            "<b>Año de seguimiento:</b> %{x}<br>"+
+            "<b>Tasa de retención al año %{x}:</b> %{y}"+
+            "<extra></extra>"
+        )
     ))
 
     if not df_titulacion.empty:
@@ -331,19 +353,26 @@ def generar_grafico_persistencia_titulación(df_persistencia, df_titulacion, ran
                 fig.add_trace(go.Scatter(
                     x=df_t_final['ANIOS_DEMORA'], 
                     y=df_t_final['PCT_TIT_COHORTE'],
-                    name="Titulación Acumulada (% Real)",
+                    name="Titulación Acumulada",
                     line=dict(color="#ebc934", width=2, dash='dash'),
                     fill='tozeroy',
                     fillcolor='rgba(255, 205, 0, 0.22)',
-                    mode='lines'
+                    mode='lines',
+                    hovertemplate=(
+                        "<b>Año de seguimiento:</b> %{x}<br>"+
+                        "<b>Tasa de titulación al año %{x}</b> %{y}<br>"+
+                        "<extra></extra>"
+                    )
+                    
                 ))
 
     fig.update_layout(
         template="plotly_white",
         xaxis=dict(title="Años transcurridos (T+n)", dtick=1, range=[0.8, 7.2]),
         yaxis=dict(title="Porcentaje de la Cohorte", ticksuffix="%", range=[0, 105]),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
+        hovermode="closest",
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+        title=f"Tasas de retención v/s Titulación (Acumulada)"
     )
 
     return fig
@@ -363,7 +392,7 @@ def generar_barras_vacantes(df_rango, rango_años):
     fig.update_layout(
         title=f"Ocupación Total {rango_años[0]}-{rango_años[1]}",
         template="plotly_white",
-        height=400,
+        height=450,
         margin=dict(t=80, b=50, l=20, r=20),
     )
 
@@ -385,13 +414,14 @@ def generar_pie_vias(df_rango):
         values='CANTIDAD_MATRICULADOS',
         hole=0.2,
         color_discrete_sequence=['#162f8a', '#F4F1BB', '#957AB8', '#ACD2ED', '#8093F1'],
+        custom_data= ['VIA_ADMISION']
         
     )
     
     fig.update_layout(
         title="Distribución por Vía de Admisión",
         template="plotly_white",
-        height=400,
+        height=500,
         margin=dict(t=100, b=100, l=10, r=10),
         legend=dict(
             orientation="h",
@@ -403,6 +433,7 @@ def generar_pie_vias(df_rango):
     fig.update_traces(
         textposition='inside',
         hovertemplate=(
+            "<b>Via de admisión:</b> %{customdata[0]}<br>" +
             "<b>Cantidad:</b> %{value}<extra></extra>"
         )
     )

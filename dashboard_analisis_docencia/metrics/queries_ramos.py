@@ -249,7 +249,7 @@ def obtener_persistencia_retencion_historica(jornada="Todas", genero="Todos"):
         
     return df
 
-#print(obtener_persistencia_retencion_historica(jornada="Todas", genero="Todos"))
+print(obtener_persistencia_retencion_historica(jornada="Todas", genero="Todos"))
 
 def query_docentes_area_formacion():
 
@@ -297,7 +297,7 @@ def query_docentes_tipo_contrato():
 
     return df
 
-print(query_docentes_tipo_contrato())
+#print(query_docentes_tipo_contrato())
 
 def query_docentes_tasa_rotacion():
 
@@ -473,4 +473,4 @@ def query_reprobados_historico_simple(jornada="Todas", genero="Todos"):
     """
     return pd.read_sql(sql_query, db_engine)
 
-print(query_reprobados_historico_simple(jornada="D", genero="F"))
+#print(query_reprobados_historico_simple(jornada="D", genero="F"))

@@ -354,7 +354,7 @@ def crear_grafico_modalidad_origen(df, jornada_sel, genero_sel):
         fig.add_trace(go.Pie(
             labels=df_m['MODALIDAD'], 
             values=df_m['CANTIDAD'],
-            textinfo='percent',
+            textinfo='label+percent',
             hovertemplate="<b>Hombres</b><br><b>Modalidad:</b> %{label}<br><b>Cantidad:</b> %{value}<extra></extra>",
             marker=dict(colors=['#162f8a', '#565EB3', '#F4F1BB', '#FEE35D']),
             textposition='inside',
@@ -364,7 +364,7 @@ def crear_grafico_modalidad_origen(df, jornada_sel, genero_sel):
         fig.add_trace(go.Pie(
             labels=df_f['MODALIDAD'], 
             values=df_f['CANTIDAD'],
-            textinfo='percent',
+            textinfo='label+percent',
             hovertemplate="<b>Mujeres</b><br><b>Modalidad:</b> %{label}<br><b>Cant:</b> %{value}<extra></extra>",
             marker=dict(colors=['#162f8a', '#565EB3', '#F4F1BB', '#FEE35D']),
             textposition='inside',
@@ -383,9 +383,8 @@ def crear_grafico_modalidad_origen(df, jornada_sel, genero_sel):
 def crear_grafico_edad(df, jornada_sel, genero_sel):
     if df.empty:
         return go.Figure().update_layout(title="Sin datos de edad")
-
-    map_gen = {'F': 'Mujer', 'M': 'Hombre'}
-    map_jor = {'D': 'Diurna', 'V': 'Vespertina'}
+        
+    df = df.copy
 
     # 1. Caso: Jornada específica -> Histograma por Género
     if jornada_sel != "Todas" and genero_sel == "Todos":
