@@ -31,12 +31,20 @@ def create_donut_chart(df, title=""):
         df, 
         values='total_periodo', 
         names='tipo_establecimiento', 
-        hole=0.2,
+        hole=0.1,
         color_discrete_sequence=px.colors.qualitative.Pastel
     )
-    fig.update_traces(textinfo='percent', hovertemplate="<b>%{label}</b><br>Cant: %{value}<extra></extra>", textposition='inside')
-    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=True,
-                      legend=dict(orientation="h", y=-0.3, xanchor='center', x= 0.5))
+    fig.update_traces(textinfo='percent', hovertemplate="<b>Dependencia:</b> %{label}<br><b>Cantidad de alumnos:</b> %{value}<extra></extra>", textposition='inside')
+    fig.update_layout(
+        title=dict(text="Dependencias de origen", font=dict(size=16), xanchor="center", x=0.5),
+        margin=dict(l=10, r=10, t=40, b=10), 
+        showlegend=True,
+        legend=dict(
+            orientation="h", 
+            y=-0.3, 
+            xanchor='center', 
+            x= 0.5)
+    )
     return fig
 
 def create_bar_ensenianza(df):
@@ -67,7 +75,7 @@ def create_bar_ensenianza(df):
     
     fig.update_traces(
         textposition='outside',
-        hovertemplate="<b>%{x}</b><br>Cantidad: %{y}<extra></extra>"
+        hovertemplate="<b>Tipo de enseñanza:</b> %{x}<br><b>Cantidad:</b> %{y}<extra></extra>"
     )
 
     fig.update_layout(
@@ -96,7 +104,15 @@ def create_line_demora(df):
         line_shape='spline' # Línea suavizada
     )
     
-    fig.update_traces(line_color='#ef553b', marker=dict(size=10))
+    fig.update_traces(
+        line_color='#ef553b', 
+        marker=dict(size=10),
+        hovertemplate=(
+            "<b>Años de demora:</b> %{x}<br>"+
+            "<b>Total alumnos:</b> %{y}<br>"+
+            "<extra></extra>"
+        )
+    )
     
     fig.update_layout(
         margin=dict(l=20, r=20, t=10, b=20),
@@ -133,6 +149,8 @@ def create_interactive_map(df_plot, geojson, is_comuna, centro_dict, zoom_nivel=
     
     zoom_final = zoom_nivel if zoom_nivel is not None else centro_dict.get("zoom", 4)
 
+    etiqueta_geo = "Comuna" if is_comuna else "Región"
+
     fig = px.choropleth_mapbox(
         data_frame=df_plot,
         geojson=geojson,
@@ -154,7 +172,15 @@ def create_interactive_map(df_plot, geojson, is_comuna, centro_dict, zoom_nivel=
             bounds={"west": -85, "east": -65, "south": -58, "north": -15}
         )
     )
-    
+
+    fig.update_traces(
+        hovertemplate=(
+            f"<b>{etiqueta_geo}:</b> %{{hovertext}}<br>"
+            "<b>Cantidad:</b> %{z}<br>"
+            "<extra></extra>"
+        )
+    )
+
     return fig
 
 def create_nem_persistence_chart(df):
@@ -179,10 +205,10 @@ def create_nem_persistence_chart(df):
     fig.update_traces(
         textposition='outside',
         hovertemplate=(
-            "<b>Rango NEM: %{x}</b><br>" +
-            "Tasa Persistencia: %{y}%<br>" +
-            "Total Cohorte: %{customdata[0]}<br>" +
-            "Estudiantes que persisten: %{customdata[1]}" + # Llave cerrada correctamente
+            "<b>Rango NEM:</b> %{x}<br>" +
+            "<b>Tasa Persistencia:</b> %{y}%<br>" +
+            "<b>Total Cohorte:</b> %{customdata[0]}<br>" +
+            "<b>Estudiantes que persisten:</b> %{customdata[1]}" + # Llave cerrada correctamente
             "<extra></extra>" # El extra va una sola vez al final
         )
     )
@@ -211,7 +237,6 @@ def create_nem_titulacion_chart(df):
         x='rango_nem',
         y='tasa_titulacion_oportuna',
         text=df_plot['tasa_titulacion_oportuna'].apply(lambda x: f'{x}%'),
-        # Pasamos 'total_titulados' como datos extra
         custom_data=['total_titulados', 'titulados_a_tiempo'],
         color='tasa_titulacion_oportuna',
         color_continuous_scale='Plasma'
@@ -219,10 +244,10 @@ def create_nem_titulacion_chart(df):
 
     fig.update_traces(
         textposition='outside',
-        hovertemplate="<b>Rango NEM: %{x}</b><br>" +
-                      "Titulación Oportuna: %{y}%<br>" +
-                      "Total Titulados: %{customdata[0]}<br>"+
-                      "Titulados a tiempo: %{customdata[1]}" +
+        hovertemplate="<b>Rango NEM:</b> %{x}<br>" +
+                      "<b>Titulación Oportuna:</b> %{y}%<br>" +
+                      "<b>Total Titulados:</b> %{customdata[0]}<br>"+
+                      "<b>Titulados a tiempo:</b> %{customdata[1]}" +
                       "<extra></extra>"
     )
 
@@ -268,10 +293,18 @@ def create_ruralidad_comparison_chart(df):
         color_discrete_map={
             'Total Matriculados': '#3498db', # Azul
             'Total Titulados': '#2ecc71'    # Verde
-        }
+        },
+        custom_data=['Métrica']
     )
 
-    fig.update_traces(textposition='outside')
+    fig.update_traces(
+        textposition='outside',
+        hovertemplate=(
+            "<b>Población:</b> %{customdata[0]}<br>"+
+            "<b>Zona:</b> %{x}<br>"+
+            "<b>Cantidad:</b> %{y}<extra></extra>"
+        )
+    )
     fig.update_layout(
         margin=dict(l=20, r=20, t=30, b=40),
         height=430, # Ajustado para tu columna lateral

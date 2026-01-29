@@ -335,22 +335,20 @@ def sync_survival_dropdown(options_globales, valor_actual):
 @callback(
     [Output('selector-instituciones-competencia', 'options'),
      Output('selector-instituciones-competencia', 'value')],
-    [Input('radio-jornada-desertores', 'value'),
+    [Input('slider-años-desertores', 'value'),
+     Input('radio-jornada-desertores', 'value'),
      Input('slider-top-n-desertores', 'value'),
      Input('selector-regiones-universo', 'value')],
     [State('selector-instituciones-competencia', 'value')]
 )
-def actualizar_opciones_selector(jornada, top_n, regiones_sel, valor_seleccionado_actual):
+def actualizar_opciones_selector(rango_anios, jornada, top_n, regiones_sel, valor_seleccionado_actual):
     NOMBRE_ECAS = "IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO"
 
-    # PASO 1: Enviar la lista completa de regiones a la función parametrizada
-    # Ya no tomamos regiones_sel[0], pasamos la lista completa (regiones_sel)
     df_ranking = get_ingresos_competencia_parametrizado(
+        rango_anios,
         top_n=top_n, 
-        anio_min=2007, 
-        anio_max=2025, 
         jornada=jornada,
-        region_sede=regiones_sel  # <--- Ahora soporta la lista completa
+        region_sede=regiones_sel  
     )
     
     if df_ranking is None or df_ranking.empty:
@@ -382,14 +380,21 @@ def actualizar_opciones_selector(jornada, top_n, regiones_sel, valor_seleccionad
      Input('selector-instituciones-competencia', 'value'),
      Input('selector-regiones-universo', 'value')]
 )
-def update_charts_permanencia_e_ingreso(rango, top_n, jornada, genero, inst_manuales, regiones_seleccionadas):
+def update_charts_permanencia_e_ingreso(rango_anios, top_n, jornada, genero, inst_manuales, regiones_seleccionadas):
     
     df_ingresos_raw = get_ingresos_competencia_parametrizado(
-        top_n, rango[0], rango[1], jornada, genero, region_sede=regiones_seleccionadas
+        rango_anios,
+        top_n,  
+        jornada, 
+        genero, 
+        region_sede=regiones_seleccionadas
     )
     
     df_perm_raw = get_permanencia_n_n1_competencia(
-        rango[0], rango[1], jornada, genero, region_sede=regiones_seleccionadas
+        rango_anios, 
+        jornada, 
+        genero, 
+        region_sede=regiones_seleccionadas
     )
 
     def filtrar_df(df, is_perm=False):
@@ -410,8 +415,8 @@ def update_charts_permanencia_e_ingreso(rango, top_n, jornada, genero, inst_manu
     label_genero = f" ({genero})" if genero != "Todos" else ""
 
     return (
-        create_dynamic_ingresos_chart(df_ing_final, rango, label_genero), 
-        create_dynamic_permanencia_chart(df_perm_final, rango)
+        create_dynamic_ingresos_chart(df_ing_final, rango_anios, label_genero), 
+        create_dynamic_permanencia_chart(df_perm_final, rango_anios)
     )
 
 @callback(
@@ -420,8 +425,12 @@ def update_charts_permanencia_e_ingreso(rango, top_n, jornada, genero, inst_manu
      Input('radio-jornada-desertores', 'value'),
      Input('radio-genero-desertores', 'value')]
 )
-def update_jornada_ecas(rango, jornada, genero):
-    df_cambio = get_distribucion_cambio_jornada_ecas(rango[0], rango[1], jornada, genero)
+def update_jornada_ecas(rango_anios, jornada, genero):
+    df_cambio = get_distribucion_cambio_jornada_ecas(
+       rango_anios, 
+       jornada, 
+       genero)
+    
     return create_cambio_jornada_charts(df_cambio)
 
 @callback(

@@ -13,11 +13,14 @@ def get_regiones_disponibles():
 
 #print(get_regiones_disponibles())
 
-def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=2025, jornada=None, genero="Todos", region_sede=None):
+def get_ingresos_competencia_parametrizado(rango_anios, top_n=10, jornada=None, genero="Todos", region_sede=None):
     
     inicio = time.time()
 
-    params = {"top_n": top_n, "anio_min": anio_min, "anio_max": anio_max, "region_sede": region_sede}
+    params = {  "top_n": top_n, 
+                "anio_min": rango_anios[0], 
+                "anio_max": rango_anios[1], 
+                "region_sede": region_sede}
     
     filtro_jornada = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
     if filtro_jornada: params["jornada"] = jornada
@@ -68,19 +71,34 @@ def get_ingresos_competencia_parametrizado(top_n=10, anio_min=2007, anio_max=202
     
     return df
 
-#print(get_ingresos_competencia_parametrizado(anio_min=2007, anio_max=2007))
+#print(get_ingresos_competencia_parametrizado(rango_anios=[2007,2007]))
 
-def get_permanencia_n_n1_competencia(anio_min= 2007, anio_max= 2025, jornada= None, genero="Todos", region_sede=None) -> pd.DataFrame:
+def obtener_limites_permanencia():
+    query = text("SELECT MAX(periodo) FROM tabla_matriculas_competencia_unificada")
+    with db_engine.connect() as conn:
+        max_periodo = conn.execute(query).scalar()
     
-    anio_max_ajustado = min(anio_max, 2024)
+    return max_periodo - 1 if max_periodo else 2024
+
+def get_permanencia_n_n1_competencia(rango_anios, jornada= None, genero="Todos", region_sede=None) -> pd.DataFrame:
+
+    #Corresponde al año maximo de datos de matriculas - 1, ya que no se puede calcular permanencia
+    #para el año maximo.
+
+    anio_max_permanencia = obtener_limites_permanencia()
+
+    anio_final = min(rango_anios[1], anio_max_permanencia)
     
     params = {
-        "anio_min": anio_min,
-        "anio_max": anio_max_ajustado,
-        "anio_max_ext": anio_max_ajustado + 1,
-        "genero": genero,
-        "jornada": jornada
+        "anio_min": rango_anios[0],
+        "anio_max": anio_final,
+        "anio_max_ext": anio_final + 1 # Basado en el límite real calculado
     }
+
+    if genero != "Todos":
+        params["genero"] = genero
+    if jornada != "Todas":
+        params["jornada"] = jornada
 
     filtro_jornada_cohorte = "AND jornada = :jornada" if jornada and jornada != "Todas" else ""
     if filtro_jornada_cohorte: params["jornada"] = jornada
@@ -129,11 +147,18 @@ def get_permanencia_n_n1_competencia(anio_min= 2007, anio_max= 2025, jornada= No
     
     return df
 
+#print(get_permanencia_n_n1_competencia(rango_anios=[2007,2025]))
+
 #Cambios de jornada evaluados por cohorte
-def get_distribucion_cambio_jornada_ecas(anio_min, anio_max, jornada_filtro=None, genero="Todos"):
+def get_distribucion_cambio_jornada_ecas(rango_anios, jornada_filtro=None, genero="Todos"):
+
+    anio_limite = obtener_limites_permanencia()
+
+    anio_max_cambio = min(rango_anios[1], anio_limite)
+
     params = {
-        "anio_min": anio_min, 
-        "anio_max": min(anio_max, 2024),
+        "anio_min": rango_anios[0], 
+        "anio_max": anio_max_cambio,
     }
     
     # Filtro dinámico de Jornada
@@ -191,7 +216,7 @@ def get_distribucion_cambio_jornada_ecas(anio_min, anio_max, jornada_filtro=None
 
     return df
 
-#print(get_distribucion_cambio_jornada_ecas(anio_min=2007, anio_max=2025))
+#print(get_distribucion_cambio_jornada_ecas(rango_anios=[2007,2025]))
 
 def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos", jornada="Todas", region_sede="region_sede"):
     # Configuración por defecto de la institución
@@ -316,7 +341,7 @@ def get_metrica_titulacion_externa(rango_anios, jornada="Todas", genero="Todos")
 
 #print(get_metrica_titulacion_externa(rango_anios=[2007,2025]))
 
-def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, jornada: str = "Todas", genero: str = "Todos", top_n: int = 10):
+def get_fuga_por_rango(columna, rango_anios,  orden: int = 1, jornada = "Todas", genero = "Todos", top_n= 10):
     """
     Obtiene el ranking de destinos (institución, carrera o área) utilizando SQL.
     """
@@ -362,7 +387,7 @@ def get_fuga_por_rango(columna: str, orden: int = 1, rango_anios: list = None, j
 
 #print(get_fuga_por_rango(columna="inst_destino", orden=1, rango_anios=[2007,2007]))
 
-def get_tiempo_de_descanso_procesado(rango_anios: list, jornada: str = "Todas", genero: str = "Todos") -> pd.DataFrame:
+def get_tiempo_de_descanso_procesado(rango_anios, jornada= "Todas", genero= "Todos") -> pd.DataFrame:
     """
     Calcula la distribución de tiempo de descanso mediante una query SQL directa.
     """

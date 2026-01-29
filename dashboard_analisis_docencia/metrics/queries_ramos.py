@@ -46,7 +46,7 @@ def query_matriculas_totales():
 
     return df
 
-#print(query_matriculas_totales())
+# print(query_matriculas_totales())
 
 def query_alumnos_nuevos(jornada="Todas", genero="Todos"):
     
@@ -249,7 +249,7 @@ def obtener_persistencia_retencion_historica(jornada="Todas", genero="Todos"):
         
     return df
 
-print(obtener_persistencia_retencion_historica(jornada="Todas", genero="Todos"))
+#print(obtener_persistencia_retencion_historica(jornada="Todas", genero="Todos"))
 
 def query_docentes_area_formacion():
 
@@ -436,7 +436,7 @@ def query_reprobados_primer_anio_filtrada(jornada="Todas", genero="Todos"):
 
     return df
 
-#print(query_reprobados_primer_anio_filtrada(jornada="V", genero="F"))
+#print(query_reprobados_primer_anio_filtrada())
 
 def query_reprobados_historico_simple(jornada="Todas", genero="Todos"):
     
@@ -473,4 +473,4 @@ def query_reprobados_historico_simple(jornada="Todas", genero="Todos"):
     """
     return pd.read_sql(sql_query, db_engine)
 
-#print(query_reprobados_historico_simple(jornada="D", genero="F"))
+#print(query_reprobados_historico_simple())

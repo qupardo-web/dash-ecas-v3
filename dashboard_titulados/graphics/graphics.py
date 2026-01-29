@@ -15,17 +15,24 @@ def crear_grafico_reingreso_inmediato(df, poblacion):
         x='nivel_global', 
         y='cantidad_alumnos',
         text='cantidad_alumnos',
-        color='nivel_global',  # <--- ESTO activa los colores diferentes por categoría
+        color='nivel_global',  
         title=f"Primer Nivel de Reingreso ({poblacion})",
-        # Opcional: Puedes usar una paleta de colores predefinida
-        color_discrete_sequence=px.colors.qualitative.Prism 
+        color_discrete_sequence=['#162f8a', '#565EB3', '#F4F1BB', '#FEE35D', '#12246b']
     )
     
-    fig.update_traces(textposition='outside')
+    fig.update_traces(
+        textposition='outside',
+        hovertemplate=(
+            "<b>Nivel global:</b> %{x}<br>"+
+            "<b>Cantidad de alumnos:</b> %{y}"+
+            "<extra></extra>"
+        )
+    )
+
     fig.update_layout(
         xaxis_title="Nivel Académico",
         yaxis_title="Cantidad de Alumnos",
-        showlegend=False,  # Opcional: oculta la leyenda si no quieres repetir los nombres
+        showlegend=False,  
         template="plotly_white",
         margin=dict(t=50, b=20, l=20, r=20)
     )
@@ -44,10 +51,19 @@ def crear_grafico_reingreso_maximo(df, poblacion):
         names='nivel_global',
         hole=0.4,
         title=f"Máximo Nivel Alcanzado ({poblacion})",
-        color_discrete_sequence=px.colors.qualitative.Prism
+        color_discrete_sequence=['#162f8a', '#565EB3', '#F4F1BB', '#FEE35D', '#12246b']
     )
     
-    fig.update_traces(textinfo='percent+label', textposition='inside')
+    fig.update_traces(
+        textinfo='percent+label', 
+        textposition='inside',
+        hovertemplate=(
+            "<b>Nivel global:</b> %{label}<br>"+
+            "<b>Cantidad de alumnos:</b> %{value}"+
+            "<extra></extra>"
+        )
+    )
+
     fig.update_layout(
         template="plotly_white",
         legend=dict(orientation="h", y=-0.1, xanchor='center', x= 0.5),
@@ -55,39 +71,68 @@ def crear_grafico_reingreso_maximo(df, poblacion):
     )
     return fig
 
-def crear_grafico_top_destinos(df, titulo, es_horizontal=True):
+def crear_grafico_top_destinos(df, titulo, es_horizontal=True, label_hover="Destino"):
     if df.empty:
         return px.bar(title="Sin datos para la selección")
 
     if es_horizontal:
-        fig = px.bar(df, y='destino', x='cantidad_alumnos', orientation='h',
-                     text='cantidad_alumnos', color='destino',
-                     color_discrete_sequence=px.colors.qualitative.Prism)
-        fig.update_layout(yaxis={'categoryorder':'total ascending'})
+        fig = px.bar(
+            df, 
+            y='destino', 
+            x='cantidad_alumnos', 
+            orientation='h',
+            text='cantidad_alumnos', 
+            color='destino',
+            color_discrete_sequence=px.colors.qualitative.Prism)
+        fig.update_traces(
+            hovertemplate=(
+                f"<b>{label_hover}:</b> %{{y}}<br>"
+                "<b>Alumnos:</b> %{x}<br>"
+                "<extra></extra>"
+            )
+        )
+        fig.update_layout(
+            yaxis={
+                'categoryorder':'total ascending'
+            }
+        )
+
+
     else:
-        fig = px.pie(df, values='cantidad_alumnos', names='destino', hole=0.3,
-                     color_discrete_sequence=px.colors.qualitative.Safe)
+        fig = px.pie(
+            df, 
+            values='cantidad_alumnos', 
+            names='destino', 
+            hole=0.3,
+            color_discrete_sequence=px.colors.qualitative.Safe)
+        fig.update_traces(
+            hovertemplate=(
+                f"<b>{label_hover}:</b> %{{label}}<br>"
+                "<b>Cantidad:</b> %{value}<br>"
+                "<b>Porcentaje:</b> %{percent}"
+                "<extra></extra>"
+            )
+        )
     
-    fig.update_layout(title=titulo, template="plotly_white", showlegend=False if es_horizontal else True)
+    fig.update_layout(
+        title=titulo, 
+        template="plotly_white", 
+        showlegend=False if es_horizontal else True)
+
     return fig
 
 def crear_pictograma_trayectoria(df, titulo):
     if df.empty:
         return go.Figure().update_layout(title=f"{titulo}: Sin datos")
 
-    # Normalizar nombre de columna
     if 'trayectoria' in df.columns:
         df = df.rename(columns={'trayectoria': 'ruta_secuencial'})
 
-    # 1. TOTAL UNIVERSO REAL (Debe dar 3.072 según tu DF)
     total_universo = int(df['cantidad'].sum())
     
-    # 2. SELECCIONAR TOP 4 (Categorías principales a graficar)
     df_plot = df.sort_values('cantidad', ascending=False).head(4).copy()
     cantidad_top = int(df_plot['cantidad'].sum())
 
-    # 3. CÁLCULO MATEMÁTICO DEL RESTO (Sin redondeos intermedios)
-    # Esto garantiza que (Cantidad Top + Cantidad Otros) sea exactamente 3.072
     cantidad_otros = total_universo - cantidad_top
     porc_otros = (cantidad_otros / total_universo) * 100 if total_universo > 0 else 0
 
@@ -95,25 +140,22 @@ def crear_pictograma_trayectoria(df, titulo):
     x_coords = np.tile(np.arange(10), 10)
     y_coords = np.repeat(np.arange(9, -1, -1), 10)
     
-    color_neutro = "#D3D3D3" 
+    color_neutro = "#9ea2a8" 
     colores_rutas = ["#162f8a", "#FF6600", "#00CC96", "#AB63FA", "#EF553B"]
     icono_user = "\uf007" 
     
     current_idx = 0
     ruta_color_idx = 0
     
-    # 4. Dibujar categorías del Top
     for i, (_, row) in enumerate(df_plot.iterrows()):
         ruta = row['ruta_secuencial']
         porcentaje = row['porcentaje']
         cantidad = int(row['cantidad'])
         
-        # Determinamos iconos visuales (1 icono = 1%)
         num_icons = int(round(porcentaje))
         end_idx = min(current_idx + num_icons, 100)
         
         if end_idx > current_idx:
-            # Color gris para categorías de salida/abandono
             if any(x in ruta for x in ["Abandono", "Solo Pregrado", "Sin Continuidad"]):
                 color = color_neutro
             else:
@@ -123,46 +165,62 @@ def crear_pictograma_trayectoria(df, titulo):
             label_leyenda = f"{porcentaje:.1f}% ({cantidad:,}) - {ruta}".replace(",", ".")
             
             fig.add_trace(go.Scatter(
-                x=x_coords[current_idx:end_idx], y=y_coords[current_idx:end_idx],
-                mode="text", name=label_leyenda, text=[icono_user] * (end_idx - current_idx),
-                textfont=dict(family=' "Font Awesome 6 Free", "Font Awesome 5 Free" ', size=22, color=color),
+                x=x_coords[current_idx:end_idx], 
+                y=y_coords[current_idx:end_idx],
+                mode="text", 
+                name=label_leyenda, 
+                text=[icono_user] * (end_idx - current_idx),
+                textfont=dict(
+                    family=' "Font Awesome 6 Free", "Font Awesome 5 Free" ', 
+                    size=22, 
+                    color=color),
                 hovertemplate=f"<b>{ruta}</b><br>Cant: {cantidad:,}<br>%: {porcentaje:.1f}%<extra></extra>".replace(",", ".")
             ))
             current_idx = end_idx
 
-    # 5. BLOQUE DE "OTROS" (Diferencia absoluta forzada)
-    # Rellenamos el espacio visual restante pero mostramos el TOTAL REAL de alumnos omitidos
     if current_idx < 100 or cantidad_otros > 0:
         iconos_restantes = max(0, 100 - current_idx)
         label_otros = f"{porc_otros:.1f}% ({cantidad_otros:,}) - Otros".replace(",", ".")
         
         fig.add_trace(go.Scatter(
-            # Si no quedan iconos por redondeo, enviamos None para que solo aparezca la leyenda
             x=x_coords[current_idx:100] if iconos_restantes > 0 else [None],
             y=y_coords[current_idx:100] if iconos_restantes > 0 else [None],
-            mode="text", name=label_otros,
+            mode="text", 
+            name=label_otros,
             text=[icono_user] * iconos_restantes if iconos_restantes > 0 else [None],
-            textfont=dict(family=' "Font Awesome 6 Free" ', size=22, color="#E5ECF6"),
+            textfont=dict(
+                family=' "Font Awesome 6 Free", "Font Awesome 5 Free" ', 
+                size=22, 
+                color="#E5ECF6"),
             hoverinfo="skip"
         ))
 
     fig.update_layout(
         title=dict(text=f"<b>{titulo}</b>", x=0.5, y=0.95),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10]),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10], scaleanchor="x"),
-        legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
-        margin=dict(t=80, b=100, l=20, r=20), height=600, plot_bgcolor='white'
+        xaxis=dict(
+            showgrid=False, 
+            zeroline=False, 
+            showticklabels=False, 
+            range=[-1, 10]),
+        yaxis=dict(
+            showgrid=False, 
+            zeroline=False, 
+            showticklabels=False, 
+            range=[-1, 10], 
+            scaleanchor="x"),
+        legend=dict(
+            orientation="h", 
+            yanchor="top", 
+            y=-0.05, 
+            xanchor="center", 
+            x=0.5, 
+            font=dict(size=10),
+            itemsizing='constant'),
+        margin=dict(t=80, b=100, l=20, r=20), 
+        height=600, 
+        plot_bgcolor='white'
+        
     )
-
-    # fig.update_layout(
-    #     title=dict(text=f"<b>{titulo}</b>", x=0.5, y=0.95),
-    #     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10]),
-    #     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1, 10], scaleanchor="x"),
-    #     legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
-    #     margin=dict(t=80, b=100, l=20, r=20),
-    #     height=600,
-    #     plot_bgcolor='white'
-    # )
 
     return fig
 
@@ -214,18 +272,22 @@ def crear_grafico_demora_reingreso(df, tipo_poblacion):
             annotations=[dict(text="Sin datos para los filtros seleccionados", showarrow=False)]
         )
 
-    # 1. Agrupamos los años de espera superiores a 5 para evitar demasiadas categorías
-    # Esto limpia las etiquetas minúsculas de 0.03% que ensucian el gráfico
     df = df.copy()
-    df['grupo_demora'] = df['demora_anios'].apply(
-        lambda x: f"Año {int(x)}" if 0 < x <= 5 else ("Mismo año" if x == 0 else "6+ Años")
-    )
+    def formatear_demora(x):
+        if x == 0:
+            return "Inmediato"
+        elif x == 1:
+            return "1 Año"
+        elif 1 < x <= 5:
+            return f"{int(x)} Años"
+        else:
+            return "6+ Años"
 
-    # 2. Consolidar cantidades por el nuevo grupo
+    df['grupo_demora'] = df['demora_anios'].apply(formatear_demora)
+
     df_plot = df.groupby('grupo_demora')['cantidad_alumnos'].sum().reset_index()
     
-    # Ordenar lógicamente: Mismo año, Año 1... Año 5, 6+ Años
-    orden_logico = ["Mismo año", "Año 1", "Año 2", "Año 3", "Año 4", "Año 5", "6+ Años"]
+    orden_logico = ["Inmediato", "1 Año", "2 Años", "3 Años", "4 Años", "5 Años", "6+ Años"]
     df_plot['grupo_demora'] = pd.Categorical(df_plot['grupo_demora'], categories=orden_logico, ordered=True)
     df_plot = df_plot.sort_values('grupo_demora')
     
@@ -236,34 +298,40 @@ def crear_grafico_demora_reingreso(df, tipo_poblacion):
         values=df_plot['cantidad_alumnos'],
         hole=.6,
         textinfo='percent', 
-        # Forzamos a que el texto esté adentro y ocultamos etiquetas amontonadas
         textposition='inside',
         insidetextorientation='horizontal',
         marker=dict(colors=['#162f8a', '#FFB563', '#A663CC', '#F88DAD', '#F9E9EC', '#FAC748', '#8390FA']),
         hoverinfo='label+value+percent'
     )])
 
+    fig.update_traces(
+        hovertemplate=(
+            "<b>Tiempo de demora:</b> %{label}<br>"+
+            "<b>Cantidad de alumnos:</b> %{value}"+
+            "<extra></extra>"
+        )
+    )
+
     fig.update_layout(
         title=dict(
-            text=f"<b>Distribución de Tiempo de Espera ({tipo_poblacion})</b><br><span style='font-size:12px;color:gray'>Año 1 corresponde al año inmediato posterior a la titulación/desercion</span>",
+            text=f"<b>Distribución de Tiempo de Espera ({tipo_poblacion})</b>",
             x=0.5, xanchor='center'
         ),
         annotations=[dict(
             text=f'Total<br><b>{total_alumnos:,}</b>'.replace(',', '.'),
             x=0.5, y=0.5,
-            font_size=20, # Un poco más grande para destacar
+            font_size=20,
             showarrow=False
         )],
         showlegend=True,
         legend=dict(
             orientation="h",
             yanchor="top",
-            y=-0.15, # Bajamos la leyenda un poco más
+            y=-0.15,
             xanchor="center",
             x=0.5,
             font=dict(size=11)
         ),
-        # Aumentamos el margen inferior (b) para que la leyenda no se corte
         margin=dict(t=60, b=120, l=20, r=20)
     )
 

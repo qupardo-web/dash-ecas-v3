@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html, callback, Output, Input, State
+from dash import dcc, html, callback, Output, Input, State, no_update
 from dashboard_acreditacion.metrics.queries_acreditacion import *
 from dashboard_acreditacion.graphics.graphics import *
 import pandas as pd
@@ -27,9 +27,7 @@ layout= dbc.Container([
             html.P("Seguimiento de los destinos de desertores respecto a su acreditación", className="lead text-muted")
         ], className="mb-4 p-3 bg-white shadow-sm rounded mx-0"),
 
-        # --- FILA 0: FILTROS SUPERIORES ---
         dbc.Row([
-            # Dropdown de Periodo (2007 a 2025)
             dbc.Col(dcc.Dropdown(
                 id='f-anio',
                 options=[{'label': str(anio), 'value': anio} for anio in range(2007, 2026)],
@@ -63,7 +61,7 @@ layout= dbc.Container([
                 value='Todas',
                 placeholder="Tipo Institución"
             ), width=3),
-        ], className="mb-4 p-3 bg-white shadow-sm rounded mx-0"),
+        ], className="mb-4 p-3 bg-white shadow-sm rounded mx-0 align-items-center", justify="center"),
 
         dbc.Row([
             dbc.Col([
@@ -166,18 +164,14 @@ def update_metrics_dashboard(periodo_sel, jornada_sel):
 
     data = get_metrics_acreditacion(periodo_sel, jornada_sel)
 
-    # 1. Acreditación ECAS - Valor Cuantitativo (Años)
     acred_act_anio = data['acreditacion_ecas_anio'] if pd.notnull(data['acreditacion_ecas_anio']) else 99
     acred_prev_anio = data['acreditacion_anterior_anio'] if pd.notnull(data['acreditacion_anterior_anio']) else 99
     
     txt_acred_anios = f"{int(acred_act_anio)} años" if acred_act_anio < 99 else "0 años"
     diff_acred = (acred_act_anio - acred_prev_anio) if (acred_act_anio < 99 and acred_prev_anio < 99) else 0
 
-    # 2. Acreditación ECAS - Estado Cualitativo
-    # Tomamos directamente el campo de la base de datos
     estado_acred = data['acreditada_inst_ecas'] if pd.notnull(data['acreditada_inst_ecas']) else "SIN INF."
     
-    # Formateo estético del estado
     if estado_acred in ['SÍ', 'ACREDITADA']:
         txt_estado = "ACREDITADA"
         color_estado = "text-success"
@@ -185,21 +179,18 @@ def update_metrics_dashboard(periodo_sel, jornada_sel):
         txt_estado = "NO ACREDITADA"
         color_estado = "text-danger"
 
-    # Helper para Badges
     def crear_badge(texto, subtexto, color_class="text-success", icono="fa-arrow-up"):
         return html.Span([
             html.I(className=f"fas {icono} me-1"),
             html.Span(f" {subtexto}", style={"fontSize": "0.75rem", "fontWeight": "normal"})
         ], className=f"{color_class} fw-bold", style={"fontSize": "0.85rem"})
 
-    # Definición de salidas para las tarjetas
     badge_anios = crear_badge(f"↑ {diff_acred}" if diff_acred >= 0 else f"↓ {abs(diff_acred)}", "vs anterior")
     
-    # Badge para el estado (simplemente repite info o muestra tendencia)
     badge_estado = html.Span(
         txt_estado, 
         className=f"{color_estado} fw-bold", 
-        style={"fontSize": "0.75rem"} # Reducción explícita para que no compita con el valor principal
+        style={"fontSize": "0.75rem"} 
     )
 
     tasa_ret_val = f"{data['tasa_retencion']:.1f}%" if pd.notnull(data['tasa_retencion']) else "0%"
@@ -208,9 +199,9 @@ def update_metrics_dashboard(periodo_sel, jornada_sel):
     cant_des_val = f"{int(data['cant_desertores'])}" if pd.notnull(data['cant_desertores']) else "0"
     badge_des = crear_badge("Fuga", "Neta", "text-teal", "fa-door-open")
 
-    return ( # Tarjeta años
+    return ( 
         txt_estado, badge_estado,
-        txt_acred_anios, badge_anios,      # Tarjeta estado cualitativo
+        txt_acred_anios, badge_anios,      
         tasa_ret_val, badge_ret,
         cant_des_val, badge_des
     )
@@ -219,21 +210,18 @@ def update_metrics_dashboard(periodo_sel, jornada_sel):
     Output('mini-bar-1', 'figure'),
     [Input('f-anio', 'value'),
      Input('f-jornada', 'value'),
-     Input('f-tipo', 'value')]
+     Input('f-tipo', 'value')],
 )
 def update_mini_bar_destino(anio, jornada, tipo_inst):
-    if not anio:
-        return go.Figure()
+    if anio is None:
+        return no_update
         
-    # 1. Llamada a la query estricta que definimos (comparación año vs año+1)
-    # Esta función ya incluye la lógica del 99 como "No Acreditada"
     df = get_movilidad_acreditacion_estricta(
         anio_seleccionado=anio, 
         jornada=jornada, 
         tipo_inst=tipo_inst
     )
     
-    # 2. Retornar el gráfico procesado
     return crear_mini_bar_acreditacion(df)
 
 @callback(
@@ -246,8 +234,6 @@ def update_detalle_instituciones(anio, jornada, categoria):
     if not anio:
         return go.Figure()
     
-    # 1. Obtener datos mediante la query lógica
     df = get_detalle_instituciones_fuga(anio, categoria, jornada)
     
-    # 2. Llamar a la función del archivo externo para generar el gráfico
     return crear_grafico_detalle_fuga(df, categoria)

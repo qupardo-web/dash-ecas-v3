@@ -8,41 +8,46 @@ import pandas as pd
 mapeo_gen = {'M': 'Hombre', 'F': 'Mujer'}
 mapeo_jor = {'D': 'Diurna', 'V': 'Vespertina'}
 
-def generar_grafico_apilado(df, color_by='GENERO'):
+def generar_grafico_historico_apilado(df, color_by='CODRAMO'):
     if df.empty:
-        return px.scatter(title="No hay datos disponibles para los filtros seleccionados")
+        return go.Figure().update_layout(title="No hay datos históricos disponibles")
+
+    orden_ramos = (
+        df.groupby(color_by, observed=False)['CANTIDAD_REPROBACIONES']
+        .sum()
+        .sort_values(ascending=False)
+        .index.tolist()
+    )
 
     fig = px.bar(
         df,
-        x="COHORTE",
+        x="ANIO",
         y="CANTIDAD_REPROBACIONES",
         color=color_by,
-        title="Distribución de Reprobaciones al Primer Año",
-        barmode='stack', 
-        labels={
-            "COHORTE": "Año de Ingreso",
-            "CANTIDAD_REPROBACIONES": "N° Reprobaciones",
-            "GENERO": "Género",
-            "JORNADA": "Jornada"
-        },
+        title="Evolución Histórica de Reprobaciones (Desde 2000)",
+        barmode='stack',
+        category_orders={color_by: orden_ramos},
         template="plotly_white",
-        custom_data=["CODRAMO", "TASA_REPROBACION_P1", color_by]
+        labels={
+            "ANIO": "Año Académico", 
+            "CANTIDAD_REPROBACIONES": "N° Reprobaciones",
+            "CODRAMO": "Ramo"
+        },
+        custom_data=["CODRAMO", "CANTIDAD_REPROBACIONES"]
     )
 
     fig.update_traces(
         hovertemplate="<br>".join([
-            "<b>Año de Ingreso:</b> %{x}",
+            "<b>Año Académico:</b> %{x}",
             "<b>Ramo:</b> %{customdata[0]}",
-            "<b>Segmento (" + color_by + "):</b> %{customdata[2]}",
             "<b>N° Reprobaciones:</b> %{y}",
-            "<b>Tasa de Reprobación:</b> %{customdata[1]}%",
             "<extra></extra>" 
         ])
     )
 
     fig.update_layout(
         xaxis={'type': 'category'},
-        font=dict(family="Arial", size=12),
+        showlegend=False, 
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         hoverlabel=dict(
             bgcolor="white", 
@@ -58,13 +63,11 @@ def crear_pie_charts_reprobados(df, ramo_nombre, titulo, jornada_sel="Todas", ge
     if df.empty:
         return go.Figure().update_layout(title="Sin datos de reprobación")
 
-    # 1. Preparación de datos y mapeos
     df_plot = df.copy()
     df_plot['GENERO'] = df_plot['GENERO'].map(mapeo_gen).fillna(df_plot['GENERO'])
     df_plot['JORNADA'] = df_plot['JORNADA'].map(mapeo_jor).fillna(df_plot['JORNADA'])
     total_reprobaciones = int(df_plot['CANTIDAD_REPROBACIONES'].sum())
 
-    # --- CASO 1: Género seleccionado (M o F) -> Mostrar Distribución por JORNADA ---
     if genero_sel != "Todos":
         df_jor = df_plot.groupby('JORNADA')['CANTIDAD_REPROBACIONES'].sum().reset_index()
         nombre_filtro = mapeo_gen.get(genero_sel, genero_sel)
@@ -133,47 +136,6 @@ def crear_pie_charts_reprobados(df, ramo_nombre, titulo, jornada_sel="Todas", ge
         showlegend=False,
         annotations=annotations,
         margin=dict(t=60, b=20, l=20, r=20)
-    )
-    
-    return fig
-
-def generar_grafico_historico_apilado(df, color_by='CODRAMO'):
-    if df.empty:
-        return go.Figure().update_layout(title="No hay datos históricos disponibles")
-
-    fig = px.bar(
-        df,
-        x="ANIO",
-        y="CANTIDAD_REPROBACIONES",
-        color=color_by,
-        title="Evolución Histórica de Reprobaciones (Desde 2000)",
-        barmode='stack',
-        template="plotly_white",
-        labels={"ANIO": "Año Académico", 
-                "CANTIDAD_REPROBACIONES": "N° Reprobaciones",
-                "CODRAMO": "Ramo"},
-        custom_data=["CODRAMO", "CANTIDAD_REPROBACIONES"]
-    )
-
-    fig.update_traces(
-        hovertemplate="<br>".join([
-            "<b>Año Académico:</b> %{x}",
-            "<b>Ramo:</b> %{customdata[0]}",
-            "<b>N° Reprobaciones:</b> %{y}",
-            "<extra></extra>" 
-        ])
-    )
-
-    fig.update_layout(
-        xaxis={'type': 'category'},
-        showlegend=False,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        hoverlabel=dict(
-            bgcolor="white", 
-            font_size=13, 
-            font_family="Arial",
-            bordercolor="#162f8a" 
-        )
     )
     
     return fig

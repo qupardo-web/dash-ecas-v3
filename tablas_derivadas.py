@@ -7,7 +7,27 @@ from typing import List, Optional, Tuple
 
 db_engine = get_db_engine()
 
-anio_max_cohorte = 2025
+def obtener_año_max_matriculas():
+
+    sql_query = text("""SELECT MAX(cat_periodo) FROM matriculas_mrun""")
+
+    with db_engine.connect() as conn:
+        max_periodo = conn.execute(sql_query).scalar()
+    
+    return max_periodo
+
+anio_max_matriculas = obtener_año_max_matriculas()
+
+def obtener_año_max_titulados():
+
+    sql_query = text("""SELECT MAX(cat_periodo) FROM titulados_mrun""")
+
+    with db_engine.connect() as conn:
+        max_periodo = conn.execute(sql_query).scalar()
+
+    return max_periodo
+
+anio_max_titulados = obtener_año_max_titulados()
 
 def actualizar_tabla_matriculas():
 
@@ -46,7 +66,7 @@ def actualizar_tabla_matriculas():
     INTO tabla_matriculas_competencia_unificada
     FROM matriculas_mrun V
     LEFT JOIN EdadIngreso E ON V.mrun = E.mrun AND E.rn = 1
-    WHERE V.anio_ing_carr_ori BETWEEN 2007 AND {anio_max_cohorte}
+    WHERE V.anio_ing_carr_ori BETWEEN 2007 AND {anio_max_matriculas}
     AND (V.nomb_carrera LIKE 'AUDITOR%' OR V.nomb_carrera LIKE 'CONTA%')
     AND (V.cod_inst = 104 OR V.tipo_inst_1 IN ('Institutos Profesionales', 'Centros de Formación Técnica') OR v.nomb_inst = 'UNIVERSIDAD SANTO TOMAS')
     AND V.dur_total_carr BETWEEN 8 AND 10;
@@ -66,7 +86,7 @@ def actualizar_tabla_matriculas():
 
 def actualizar_tabla_titulados():
 
-    query_insert = text("""
+    query_insert = f"""
     IF OBJECT_ID('tabla_dashboard_titulados', 'U') IS NOT NULL
         DROP TABLE tabla_dashboard_titulados;
 
@@ -104,7 +124,7 @@ def actualizar_tabla_titulados():
     FROM titulados_mrun T
     LEFT JOIN EdadIngreso E ON T.mrun = E.mrun AND E.rn = 1
     WHERE T.fecha_obtencion_titulo IS NOT NULL
-    AND T.anio_ing_carr_ori BETWEEN 2007 AND 2025
+    AND T.anio_ing_carr_ori BETWEEN 2007 AND {anio_max_titulados}
     AND (
         (T.cod_inst = 104) 
         OR 
@@ -119,11 +139,11 @@ def actualizar_tabla_titulados():
     CREATE INDEX idx_titulados_cohorte ON tabla_dashboard_titulados(cohorte, cod_inst);
     CREATE INDEX idx_titulados_mrun ON tabla_dashboard_titulados(mrun);
     CREATE INDEX idx_titulados_anios ON tabla_dashboard_titulados(anios_para_titularse);
-    """)
+    """
 
     try:
         with db_engine.connect() as conn:
-            conn.execute(query_insert)
+            conn.execute(text(query_insert))
             conn.commit()
             print("Tabla actualizada con los titulados de ECAS y competencia.")
     except Exception as e:
@@ -365,7 +385,7 @@ def actualizar_tabla_trayectoria_titulados():
         m.nivel_global AS nivel_estudio_post,
         m.tipo_inst_1,
         m.area_conocimiento AS area_conocimiento_destino,
-        (m.cat_periodo - t.anio_titulacion) AS tiempo_espera_post
+        ((m.cat_periodo - 1) - t.anio_titulacion) AS tiempo_espera_post
     INTO tabla_trayectoria_post_titulado
     FROM tabla_dashboard_titulados t
     INNER JOIN matriculas_mrun m ON t.mrun = m.mrun
@@ -394,8 +414,8 @@ def actualizar_tabla_trayectoria_titulados():
 # actualizar_tabla_matriculas()
 # actualizar_tabla_egresados()
 # actualizar_tabla_titulados()
-# actualizar_tabla_trayectoria_titulados()
+actualizar_tabla_trayectoria_titulados()
 # actualizar_tabla_origenes_totales()
 # actualizar_tabla_desertores_ecas()
 # actualizar_tabla_abandono_total_ecas()
-actualizar_tabla_titulados_desertores()
+#actualizar_tabla_titulados_desertores()

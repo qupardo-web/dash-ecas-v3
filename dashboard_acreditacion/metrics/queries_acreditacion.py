@@ -16,8 +16,9 @@ def get_movilidad_acreditacion_estricta(anio_seleccionado, jornada="Todas", tipo
 
     sql_query = f"""
     WITH Acred_ECAS AS (
-        SELECT DISTINCT periodo, acre_inst_anio AS acred_ecas_periodo
-        FROM tabla_matriculas_competencia_unificada WHERE cod_inst = 104
+    SELECT DISTINCT periodo, acre_inst_anio AS acred_ecas_periodo
+    FROM tabla_matriculas_competencia_unificada 
+    WHERE cod_inst = 104
     ),
     PrimerIngresoPost AS (
         SELECT 
@@ -26,50 +27,50 @@ def get_movilidad_acreditacion_estricta(anio_seleccionado, jornada="Todas", tipo
             jornada_ecas, tipo_inst_1, ultimo_periodo_ecas,
             ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as rn_ingreso
         FROM tabla_fuga_detallada_ecas
+    ),
+    MovilidadClasificada AS (
+        -- Calculamos la categoría primero para no romper el GROUP BY
+        SELECT 
+            f.mrun,
+            CASE 
+                -- 1. Si ambos son No Acreditados (0 o NULL) -> Son Iguales
+                WHEN ISNULL(f.acre_inst_anio, 0) = 0 AND ISNULL(e.acred_ecas_periodo, 0) = 0 
+                    THEN 'Igual Acreditación'
+
+                -- 2. Si el destino es 0 o NULL pero la ECAS sí tiene -> Destino es No Acreditado (inferior)
+                WHEN ISNULL(f.acre_inst_anio, 0) = 0 AND ISNULL(e.acred_ecas_periodo, 0) > 0
+                    THEN 'No Acreditada'
+
+                -- 3. Si la ECAS es 0 o NULL pero el destino sí tiene -> Destino es Más
+                WHEN ISNULL(e.acred_ecas_periodo, 0) = 0 AND ISNULL(f.acre_inst_anio, 0) > 0
+                    THEN 'Más Acreditada'
+
+                -- 4. Casos Especiales de Instituciones Autónomas/No acreditadas (99)
+                WHEN f.acre_inst_anio >= 99 THEN 'No Acreditada'
+
+                -- 5. Comparación Numérica Estándar
+                WHEN f.acre_inst_anio > e.acred_ecas_periodo THEN 'Más Acreditada'
+                WHEN f.acre_inst_anio = e.acred_ecas_periodo THEN 'Igual Acreditación'
+                ELSE 'Menos Acreditada'
+            END AS categoria_movilidad
+        FROM PrimerIngresoPost f
+        INNER JOIN Acred_ECAS e ON f.ultimo_periodo_ecas = e.periodo
+        WHERE f.rn_ingreso = 1 
+        AND f.ultimo_periodo_ecas = :anio_seleccionado
+        AND f.anio_matricula_post = (:anio_seleccionado + 1)
+        {f_jornada} {f_tipo}
     )
+    -- Ahora agrupamos de forma limpia por la categoría ya calculada
     SELECT 
-        CASE 
-            -- 1. CASO ESPECIAL: ECAS no acreditada (99) y destino SÍ acreditado (aunque traiga 99 en años)
-            WHEN e.acred_ecas_periodo >= 99 
-                 AND (f.acreditada_inst IN ('SÍ', 'ACREDITADA') OR (f.acre_inst_anio > 0 AND f.acre_inst_anio < 99))
-                 THEN 'Más Acreditada'
-
-            -- 2. Regla general para No Acreditadas (si no cumplió lo anterior)
-            WHEN f.acreditada_inst IN ('NO', 'SIN ACREDITACIÓN') 
-                 OR ISNULL(f.acre_inst_anio, 0) = 0 
-                 OR f.acre_inst_anio >= 99 
-                 THEN 'No Acreditada'
-
-            -- 3. Comparaciones estándar cuando ambos tienen años válidos
-            WHEN f.acre_inst_anio > e.acred_ecas_periodo THEN 'Más Acreditada'
-            WHEN f.acre_inst_anio = e.acred_ecas_periodo THEN 'Igual Acreditación'
-            ELSE 'Menos Acreditada'
-        END AS categoria_movilidad,
-        COUNT(DISTINCT f.mrun) AS cantidad_alumnos
-    FROM PrimerIngresoPost f
-    INNER JOIN Acred_ECAS e ON f.ultimo_periodo_ecas = e.periodo
-    WHERE f.rn_ingreso = 1 
-      AND f.ultimo_periodo_ecas = :anio_seleccionado
-      AND f.anio_matricula_post = (:anio_seleccionado + 1)
-    {f_jornada} {f_tipo}
-    GROUP BY 
-        CASE 
-            WHEN e.acred_ecas_periodo >= 99 
-                 AND (f.acreditada_inst IN ('SÍ', 'ACREDITADA') OR (f.acre_inst_anio > 0 AND f.acre_inst_anio < 99))
-                 THEN 'Más Acreditada'
-            WHEN f.acreditada_inst IN ('NO', 'SIN ACREDITACIÓN') 
-                 OR ISNULL(f.acre_inst_anio, 0) = 0 
-                 OR f.acre_inst_anio >= 99 
-                 THEN 'No Acreditada'
-            WHEN f.acre_inst_anio > e.acred_ecas_periodo THEN 'Más Acreditada'
-            WHEN f.acre_inst_anio = e.acred_ecas_periodo THEN 'Igual Acreditación'
-            ELSE 'Menos Acreditada'
-        END
+        categoria_movilidad,
+        COUNT(DISTINCT mrun) AS cantidad_alumnos
+    FROM MovilidadClasificada
+    GROUP BY categoria_movilidad
     """
     df = pd.read_sql(text(sql_query), db_engine, params=params)
     return df
 
-#print(get_movilidad_acreditacion_estricta(anio_seleccionado=2007))
+#print(get_movilidad_acreditacion_estricta(anio_seleccionado=2010))
 
 def get_metrics_acreditacion(periodo_seleccionado, jornada_filtro="Todas"):
     periodo_actual = int(periodo_seleccionado)
@@ -137,13 +138,14 @@ def get_metrics_acreditacion(periodo_seleccionado, jornada_filtro="Todas"):
 
     return df
 
+#print(get_metrics_acreditacion(periodo_seleccionado=2010))
+
 def get_detalle_instituciones_fuga(periodo_sel, categoria_sel, jornada="Todas"):
     params = {
         "periodo": periodo_sel,
         "categoria": categoria_sel
     }
     
-    # Filtro opcional de jornada basado en permanencia
     f_jornada = "AND f.jornada_ecas = :jornada" if jornada != "Todas" else ""
     if jornada != "Todas": params["jornada"] = jornada
 
@@ -164,13 +166,22 @@ def get_detalle_instituciones_fuga(periodo_sel, categoria_sel, jornada="Todas"):
             f.inst_destino,
             f.mrun,
             CASE 
-                WHEN e.acred_ecas_periodo >= 99 
-                     AND (f.acreditada_inst IN ('SÍ', 'ACREDITADA') OR (f.acre_inst_anio > 0 AND f.acre_inst_anio < 99))
-                     THEN 'Más Acreditada'
-                WHEN f.acreditada_inst IN ('NO', 'SIN ACREDITACIÓN') 
-                     OR ISNULL(f.acre_inst_anio, 0) = 0 
-                     OR f.acre_inst_anio >= 99 
-                     THEN 'No Acreditada'
+                -- 1. Si ambos son No Acreditados (0 o NULL) -> Son Iguales
+                WHEN ISNULL(f.acre_inst_anio, 0) = 0 AND ISNULL(e.acred_ecas_periodo, 0) = 0 
+                    THEN 'Igual Acreditación'
+
+                -- 2. Si el destino es 0 o NULL pero la ECAS sí tiene -> Destino es No Acreditado
+                WHEN ISNULL(f.acre_inst_anio, 0) = 0 AND ISNULL(e.acred_ecas_periodo, 0) > 0
+                    THEN 'No Acreditada'
+
+                -- 3. Si la ECAS es 0 o NULL pero el destino sí tiene -> Destino es Más Acreditado
+                WHEN ISNULL(e.acred_ecas_periodo, 0) = 0 AND ISNULL(f.acre_inst_anio, 0) > 0
+                    THEN 'Más Acreditada'
+
+                -- 4. Casos Especiales de Instituciones Autónomas/No acreditadas (99)
+                WHEN f.acre_inst_anio >= 99 THEN 'No Acreditada'
+
+                -- 5. Comparación Numérica Estándar
                 WHEN f.acre_inst_anio > e.acred_ecas_periodo THEN 'Más Acreditada'
                 WHEN f.acre_inst_anio = e.acred_ecas_periodo THEN 'Igual Acreditación'
                 ELSE 'Menos Acreditada'

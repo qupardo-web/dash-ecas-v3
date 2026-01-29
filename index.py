@@ -11,7 +11,7 @@ from dashboard_analisis_docencia.pages.dashboard_analisis_cohorte import layout 
 # Inicialización de la App
 app = dash.Dash(
     __name__, 
-    external_stylesheets=[dbc.themes.FLATLY, dbc.icons.FONT_AWESOME],
+    external_stylesheets=[dbc.themes.FLATLY, dbc.icons.FONT_AWESOME, "https://use.fontawesome.com/releases/v6.4.2/css/all.css"],
     suppress_callback_exceptions=True  # Necesario para multi-página
 )
 

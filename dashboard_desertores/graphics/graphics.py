@@ -35,6 +35,13 @@ def create_dynamic_ingresos_chart(df: pd.DataFrame, rango: list, label_genero: s
                 trace.update(marker_color="#162f8a", opacity=1.0)
             else:
                 trace.update(opacity=1.0)
+            trace.update(
+                hovertemplate=(
+                    f"<b>{trace.name}</b><br>"+
+                    "<b>Cantidad alumnos:</b> %{y}<br>"+
+                    "<extra></extra>"
+                )
+            )
                 
         fig.update_layout(
             showlegend=True,
@@ -66,18 +73,23 @@ def create_dynamic_ingresos_chart(df: pd.DataFrame, rango: list, label_genero: s
                 annotation_position="top left"
             )
 
-        # Configuración de TRAZAS (Estilo visual ECAS)
         fig.for_each_trace(lambda t: t.update(
             line=dict(
                 width=3 if "ESCUELA DE CONTADORES" in t.name.upper() or "ECAS" in t.name.upper() else 2,
                 color="#162f8a" if "ESCUELA DE CONTADORES" in t.name.upper() else None 
-            )
+            ),
+            hovertemplate=(
+            f"<b>{t.name}</b><br>"
+            "<b>Año:</b> %{x}<br>"
+            "<b>Total:</b> %{y}"
+            "<extra></extra>"
+        )
         ))
 
     # --- CONFIGURACIÓN COMÚN DE LAYOUT ---
     fig.update_layout(
         template="plotly_white",
-        hovermode="x unified",
+        hovermode="closest",
         legend=dict(
             orientation="h", 
             y=-0.3,
@@ -125,6 +137,12 @@ def create_dynamic_permanencia_chart(df: pd.DataFrame, rango: list) -> go.Figure
                 trace.update(marker_color="#162f8a", opacity=1.0)
             else:
                 trace.update(opacity=1)
+            trace.update(
+                hovertemplate=(
+                    f"<b>Institución: </b>{trace.name}<br>"+
+                    "<b>Tasa de retención:</b> %{y}<extra></extra>"
+                )
+            )
 
         fig.update_layout(
             title=f"Tasa de Permanencia N a N+1 (Cohorte {rango[0]})",
@@ -171,18 +189,25 @@ def create_dynamic_permanencia_chart(df: pd.DataFrame, rango: list) -> go.Figure
                     opacity=1.0,
                     marker=dict(size=6)
                 )
+            trace.update(
+                hovertemplate=(
+                    f"<b>Institución: </b> {trace.name}<br>"+
+                    "<b>Tasa de retención:</b> %{y}<br>"+
+                    "<b>Cohorte:</b> %{x}<extra></extra>"
+                )
+            )
 
         fig.update_layout(
             title=(
                 "<b>Permanencia de Estudiantes Primer Año (N → N+1)</b><br>"
                 "<sup>Comparativa longitudinal: % de alumnos que continúan</sup>"
             ),
-            hovermode="x unified",
+            hovermode="closest",
             yaxis=dict(ticksuffix="%", range=[0, 105], gridcolor="#eeeeee"),
             xaxis=dict(showticklabels=False, title=None),
             template="plotly_white",
-            height=450,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.4, xanchor="center", x=0.5),
+            height=600,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.6, xanchor="center", x=0.5),
             margin=dict(t=100, l=60, r=40, b=120)
         )
         return fig
@@ -246,19 +271,30 @@ def create_survival_graduation_chart(df, nombre_inst):
     fig.add_trace(go.Scatter(
         x=df['t_anios'], 
         y=df['pct_supervivencia'],
-        name="Supervivencia (% Matrícula)",
-        line=dict(color="#2c3e50", width=3),
-        mode='lines+markers'
+        name="Tasa de retención",
+        line=dict(color="#162f8a", width=3),
+        mode='lines+markers',
+        hovertemplate=(
+            "<b>Años desde el ingreso:</b> %{x}<br>"+
+            "<b>Tasa de retención:</b> %{y}"+
+            "<extra></extra>"
+        )
     ))
 
     # Curva de Titulación Acumulada
     fig.add_trace(go.Scatter(
         x=df['t_anios'], 
         y=df['pct_titulacion_acum'],
-        name="Titulación Acumulada (%)",
-        line=dict(color="#e67e22", width=3, dash='dash'),
+        name="Tasa de titulación (Acumulada)",
+        line=dict(color="#ebc934", width=2, dash='dash'),
         fill='tozeroy',
-        mode='lines+markers'
+        fillcolor='rgba(255, 205, 0, 0.22)',
+        mode='lines+markers',
+        hovertemplate=(
+            "<b>Años desde el ingreso:</b> %{x}<br>"+
+            "<b>Tasa de titulación:</b> %{y}"+
+            "<extra></extra>"
+        )
     ))
 
     fig.update_layout(
@@ -266,7 +302,7 @@ def create_survival_graduation_chart(df, nombre_inst):
         xaxis_title="Años transcurridos desde el ingreso (T+n)",
         yaxis=dict(title="Porcentaje de la Cohorte", ticksuffix="%", range=[0, 105]),
         template="plotly_white",
-        hovermode="x unified",
+        hovermode="closest",
         legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5)
     )
     
@@ -278,15 +314,34 @@ def create_fuga_pie_chart(df, titulo):
     
     label_col = df.columns[0] # inst_destino, carrera_destino o area_conocimiento_destino
     
+    # Mapeo de etiquetas para que el hover se vea profesional
+    nombres_labels = {
+        'inst_destino': 'Institución',
+        'carrera_destino': 'Carrera',
+        'area_conocimiento_destino': 'Área'
+    }
+    etiqueta_actual = nombres_labels.get(label_col, "Categoría")
+
     fig = px.pie(
         df, 
         values='cant', 
         names=label_col,
-        hole=0.4,  # Estilo Donut para mejor lectura
-        color_discrete_sequence=px.colors.qualitative.Pastel
+        hole=0.4,
+        color_discrete_sequence=px.colors.qualitative.Pastel,
     )
     
-    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig.update_traces(
+        textposition='inside', 
+        textinfo='percent', 
+        insidetextorientation='radial',
+        hovertemplate=(
+            f"<b>{etiqueta_actual}:</b> %{{label}}<br>"+
+            "<b>Cantidad de desertores:</b> %{value}<br>"+
+            "<b>Porcentaje:</b> %{percent}"+
+            "<extra></extra>"
+        )
+    )
+
     fig.update_layout(
         title=titulo,
         margin=dict(t=50, b=20, l=20, r=20),
@@ -317,7 +372,13 @@ def create_tiempo_descanso_horiz_chart(df):
         margin=dict(l=20, r=20, t=50, b=20)
     )
     
-    fig.update_traces(textposition='outside')
+    fig.update_traces(
+        textposition='outside',
+        hovertemplate=(
+            "<b>Rango de descanso:</b> %{y}<br>"+
+            "<b>Porcentaje:</b> %{x}"+
+            "<extra></extra>"
+        ))
     
     return fig
 

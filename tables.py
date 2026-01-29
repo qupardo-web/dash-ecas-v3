@@ -188,7 +188,7 @@ def cargar_titulados_con_mapeo():
                 if_exists=modo, 
                 index=False,
                 chunksize=50000, 
-                dtype=DTYPE_MAP
+                dtype=DTYPE_TITULADOS
             )
             print(f"--- Éxito: {archivo} cargado ({len(df)} filas) ---")
 

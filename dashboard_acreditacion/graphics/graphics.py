@@ -5,12 +5,11 @@ def crear_mini_bar_acreditacion(df):
     if df is None or df.empty:
         return go.Figure().update_layout(title="Sin datos en este periodo")
 
-    # Mapeo de colores semánticos
     color_map = {
-        "Más Acreditada": "#28a745",    # Verde: Mejora
-        "Igual Acreditación": "#162f8a", # Azul: Estabilidad
-        "Menos Acreditada": "#ffc107",  # Amarillo: Descenso
-        "No Acreditada": "#dc3545"      # Rojo: Riesgo
+        "Más Acreditada": "#28a745",    
+        "Igual Acreditación": "#162f8a", 
+        "Menos Acreditada": "#ffc107",  
+        "No Acreditada": "#dc3545"     
     }
 
     fig = px.bar(
@@ -25,14 +24,22 @@ def crear_mini_bar_acreditacion(df):
         }
     )
 
-    fig.update_traces(textposition='outside', cliponaxis=False)
+    fig.update_traces(
+        textposition='outside', 
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>Institución destino:</b> %{x}<br>"+
+            "<b>Cantidad de alumnos:</b> %{y}"+
+            "<extra></extra>"
+        )
+    )
     fig.update_layout(
         template="plotly_white",
         showlegend=False,
         xaxis_title=None,
         yaxis_title="N° Alumnos",
         margin=dict(t=20, b=20, l=20, r=20),
-        height=280, # Ajustado para el contenedor mini-bar
+        height=280, 
         font=dict(size=10)
     )
     return fig
@@ -76,7 +83,12 @@ def crear_grafico_detalle_fuga(df, categoria):
     fig.update_traces(
         textposition='outside',
         marker_color='#162f8a',
-        texttemplate='%{text}' # Muestra el número entero
+        texttemplate='%{text}',
+        hovertemplate=(
+            "<b>Institución destino:</b> %{y}<br>"+
+            "<b>Cantidad de alumnos:</b> %{x}"+
+            "<extra></extra>"
+        )
     )
     
     return fig

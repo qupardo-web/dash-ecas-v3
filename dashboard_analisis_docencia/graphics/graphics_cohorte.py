@@ -384,7 +384,7 @@ def crear_grafico_edad(df, jornada_sel, genero_sel):
     if df.empty:
         return go.Figure().update_layout(title="Sin datos de edad")
         
-    df = df.copy
+    df = df.copy()
 
     # 1. Caso: Jornada específica -> Histograma por Género
     if jornada_sel != "Todas" and genero_sel == "Todos":
@@ -422,15 +422,23 @@ def crear_grafico_edad(df, jornada_sel, genero_sel):
                            nbins=20)
 
     fig.update_layout(
-        height=450, template="plotly_white", 
+        height=450, 
+        template="plotly_white", 
         margin=dict(t=80, b=20, l=20, r=20),
-        xaxis_title="Edad (Años)", yaxis_title="Cantidad de Alumnos",
+        xaxis_title="Edad (Años)", 
+        yaxis_title="Cantidad de Alumnos",
         legend=dict(title_text="", orientation="h", yanchor="bottom", xanchor="center", y=-0.3, x=0.5),
-        bargap=0.1
+        bargap=0.1,
     )
 
     fig.update_traces(
-        hovertemplate=f"<b>Edad:</b> %{{x}} años<br><b>{etiqueta}:</b> %{{fullData.name}}<br><b>Cantidad:</b> %{{y}}<extra></extra>"
+        selector=dict(type='histogram'),
+        hovertemplate=(
+            f"<b>Edad:</b> %{{x}} años<br>"
+            f"<b>{etiqueta}:</b> %{{fullData.name}}<br>"
+            f"<b>Cantidad:</b> %{{y}}"
+            "<extra></extra>"
+        )
     )
 
     return fig

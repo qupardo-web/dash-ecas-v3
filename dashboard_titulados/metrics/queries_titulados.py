@@ -203,6 +203,7 @@ def get_demora_reingreso(rango_anios, tipo_poblacion="Todos", nivel="Todos", jor
 #print(get_demora_reingreso(rango_anios=[2007,2007], tipo_poblacion="Todos"))
 
 def get_rutas_academicas_completas(rango_anios, tipo_poblacion="Titulados", jornada="Todas", genero="Todos", rango_edad="Todos"):
+    
     params = {"anio_min": rango_anios[0], "anio_max": rango_anios[1], "cod_inst": 104}
     
     # Identificar la tabla maestra según la población (Igual que en continuidad)

@@ -376,24 +376,26 @@ def update_destino_unificado(tab_activa, rango, poblacion, jornada, genero, top_
         titulo = f"Top {top_n} Instituciones de Destino de {nivel}"
         es_horizontal = True
         nivel_query = nivel
+        label_hover = "Institución"
     elif tab_activa == "tab-carreras":
         dimension = "carrera_destino"
         titulo = f"Top {top_n} Carreras de destino de {nivel}"
         es_horizontal = True
         nivel_query = nivel
+        label_hover = "Carrera"
     elif tab_activa == "tab-area-destino":
         dimension = "area_conocimiento_destino"
         titulo = f"Top {top_n} areas de conocimiento destino de {nivel}"
         es_horizontal = False
         nivel_query = nivel
+        label_hover = "Area de conocimiento"
     else:
         dimension = "tipo_inst_1"
         titulo = f"Distribución por Tipo de Institución de {nivel}"
         es_horizontal = False
         nivel_query = nivel
+        label_hover = "Tipo de institución"
     
-
-    # Llamada a la query incluyendo el nuevo filtro de edad
     df = get_top_destinos_filtrado(
         rango_anios=rango,
         tipo_poblacion=poblacion,
@@ -405,7 +407,7 @@ def update_destino_unificado(tab_activa, rango, poblacion, jornada, genero, top_
         top_n=top_n
     )
 
-    return crear_grafico_top_destinos(df, titulo, es_horizontal=es_horizontal)
+    return crear_grafico_top_destinos(df, titulo, es_horizontal=es_horizontal, label_hover=label_hover)
 
 @callback(
     Output('grafico-demora-reingreso', 'figure'),
