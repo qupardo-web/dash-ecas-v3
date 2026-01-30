@@ -892,7 +892,6 @@ def get_data_geografica_unificada_rango(cohorte_range, cod_inst, jornada="Todas"
     with db_engine.connect() as conn:
         df_raw = pd.read_sql(sql_query, conn, params=params)
 
-    #subir 
     if df_raw.empty:
         return pd.DataFrame()
 
@@ -904,7 +903,7 @@ def get_data_geografica_unificada_rango(cohorte_range, cod_inst, jornada="Todas"
         df = df[df['genero'] == genero]
 
     return df.groupby(['cod_region', 'nomb_region', 'cod_provincia', 'cod_comuna', 'nomb_comuna'])['cantidad'].sum().reset_index()
-
+    
 print(get_data_geografica_unificada_rango(cohorte_range=[2007,2025], cod_inst=104))
 
 def get_kpi_ruralidad_seguimiento_rango(cohorte_range, cod_inst, jornada="Todas", genero="Todos", region_id=None):
