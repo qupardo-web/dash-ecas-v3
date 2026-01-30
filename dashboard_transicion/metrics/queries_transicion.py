@@ -892,6 +892,7 @@ def get_data_geografica_unificada_rango(cohorte_range, cod_inst, jornada="Todas"
     with db_engine.connect() as conn:
         df_raw = pd.read_sql(sql_query, conn, params=params)
 
+    #subir 
     if df_raw.empty:
         return pd.DataFrame()
 
