@@ -24,7 +24,6 @@ with open(path_comunas, encoding='utf-8') as f:
 with open(path_comunas_v2, encoding='utf-8') as f:
     geojson_comunas_v2 = json.load(f)
 
-
 MAP_CARD_STYLE = {
     "borderRadius": "20px", 
     "border": "none", 

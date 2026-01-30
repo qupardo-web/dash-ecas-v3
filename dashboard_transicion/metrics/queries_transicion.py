@@ -721,85 +721,87 @@ def get_correlacion_nem_titulacion_rango(cohorte_range, cod_inst, jornada="Todas
 
 def get_tasas_articulacion_tipo_establecimiento_rango(cohorte_range, cod_inst, jornada="Todas", carrera="Todas", genero="Todos", region_id=None):
     
+    # 1. Ajuste de cohortes para el diccionario
     if isinstance(cohorte_range, list):
-        c_inicio, c_fin = cohorte_range[0], cohorte_range[1]
-        condicion_cohorte = "BETWEEN :c_inicio AND :c_fin"
+        anio_min, anio_max = int(cohorte_range[0]), int(cohorte_range[1])
     else:
-        c_inicio, c_fin = cohorte_range, cohorte_range
-        condicion_cohorte = "= :c_inicio"
+        anio_min, anio_max = int(cohorte_range), int(cohorte_range)
 
+    # 2. Diccionario de parámetros con nombres EXACTOS a la query
     params = {
-        "cod_inst": cod_inst,
-        "c_inicio": c_inicio,
-        "c_fin": c_fin,
+        "cod_inst": int(cod_inst),
+        "anio_min": anio_min,
+        "anio_max": anio_max,
         "region": region_id
     }
 
-    # Filtro de región dinámico
-    filtro_region = "AND e_geo.cod_region = :region" if region_id != None else ""
+    # Filtro de región dinámico (SQL)
+    filtro_region = "AND e_geo.cod_region = :region" if region_id is not None else ""
 
-    # Mapeo local (aseguramos el código 0)
+    # Mapeo local
     map_ensenianza_full = map_ensenianza.copy()
     map_ensenianza_full[0] = "Media - Modalidad no registrada"
 
+    # 3. Query con LTRIM/RTRIM y parámetros sincronizados
     sql_query = text(f"""
-    WITH PrimerIngresoInstitucion AS (
-        -- Identidad de ingreso: Validamos existencia en egresados para filtro regional
-        SELECT * FROM (
-            SELECT 
-                m.mrun, 
-                m.cohorte as anio_ingreso,
-                m.jornada,
-                m.nomb_carrera,
-                m.genero,
-                m.periodo,
-                ROW_NUMBER() OVER (
-                    PARTITION BY m.mrun 
-                    ORDER BY m.periodo ASC, m.jornada ASC
-                ) as rn_ingreso
-            FROM tabla_matriculas_competencia_unificada m
-            -- Forzamos vínculo geográfico
-            INNER JOIN (
-                SELECT mrun, cod_region,
-                       ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_geo
+        WITH PrimerIngresoInstitucion AS (
+            SELECT * FROM (
+                SELECT 
+                    m.mrun, 
+                    m.cohorte as anio_ingreso,
+                    m.jornada,
+                    m.nomb_carrera,
+                    m.genero,
+                    m.periodo,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY m.mrun 
+                        ORDER BY m.periodo ASC, m.jornada ASC
+                    ) as rn_ingreso
+                FROM tabla_matriculas_competencia_unificada m
+                INNER JOIN (
+                    SELECT mrun, cod_region,
+                        ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_geo
+                    FROM tabla_alumnos_egresados_unificada
+                ) e_geo ON m.mrun = e_geo.mrun AND e_geo.rn_geo = 1
+                WHERE m.cod_inst = :cod_inst
+                {filtro_region}
+            ) t WHERE rn_ingreso = 1
+        ),
+        UniversoValido AS (
+            SELECT mrun, anio_ingreso, jornada, nomb_carrera, genero
+            FROM PrimerIngresoInstitucion
+            WHERE anio_ingreso BETWEEN :anio_min AND :anio_max
+        ),
+        EgresoOrdenado AS (
+            SELECT * FROM (
+                SELECT
+                    mrun,
+                    -- SQL 2008: LTRIM + RTRIM en lugar de TRIM
+                    COALESCE(NULLIF(LTRIM(RTRIM(CAST(cod_ensenianza AS VARCHAR(10)))), ''), '0') AS cod_ense_clean,
+                    -- Limpieza de notas
+                    CAST(REPLACE(CAST(prom_notas_alu AS VARCHAR(20)), ',', '.') AS FLOAT) AS prom_notas,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY mrun
+                        ORDER BY periodo DESC
+                    ) AS rn_e
                 FROM tabla_alumnos_egresados_unificada
-            ) e_geo ON m.mrun = e_geo.mrun AND e_geo.rn_geo = 1
-            WHERE m.cod_inst = :cod_inst
-            {filtro_region}
-        ) t WHERE rn_ingreso = 1
-    ),
-    UniversoValido AS (
-        SELECT mrun, anio_ingreso, jornada, nomb_carrera, genero
-        FROM PrimerIngresoInstitucion
-        WHERE anio_ingreso {condicion_cohorte}
-    ),
-    EgresoOrdenado AS (
-        -- Obtenemos el tipo de enseñanza del egreso estable
-        SELECT * FROM (
-            SELECT
-                mrun,
-                COALESCE(NULLIF(TRIM(CAST(cod_ensenianza AS VARCHAR(10))), ''), '0') AS cod_ense_clean,
-                CAST(REPLACE(prom_notas_alu, ',', '.') AS FLOAT) AS prom_notas,
-                ROW_NUMBER() OVER (
-                    PARTITION BY mrun
-                    ORDER BY periodo DESC
-                ) AS rn_e
-            FROM tabla_alumnos_egresados_unificada
-        ) e_sub WHERE rn_e = 1
-    )
-    SELECT
-        u.mrun, u.jornada, u.nomb_carrera, u.genero,
-        e.cod_ense_clean, e.prom_notas AS prom_notas_media
-    FROM UniversoValido u
-    INNER JOIN EgresoOrdenado e ON u.mrun = e.mrun
+            ) e_sub WHERE rn_e = 1
+        )
+        SELECT
+            u.mrun, u.jornada, u.nomb_carrera, u.genero,
+            e.cod_ense_clean, e.prom_notas AS prom_notas_media
+        FROM UniversoValido u
+        INNER JOIN EgresoOrdenado e ON u.mrun = e.mrun
     """)
 
-    df_raw = pd.read_sql(sql_query, db_engine, params=params)
+    # 4. Ejecución con conexión explícita
+    with db_engine.connect() as conn:
+        df_raw = pd.read_sql(sql_query, conn, params=params)
 
     if df_raw.empty:
         return pd.DataFrame(columns=['Tipo Enseñanza', 'Cant. Estudiantes', 'Promedio Notas'])
 
-    # 2. FILTROS EN PANDAS
+    # 5. Filtros en Pandas
     df = df_raw.copy()
     if jornada != "Todas":
         df = df[df['jornada'] == jornada]
@@ -811,11 +813,11 @@ def get_tasas_articulacion_tipo_establecimiento_rango(cohorte_range, cod_inst, j
     if df.empty:
         return pd.DataFrame(columns=['Tipo Enseñanza', 'Cant. Estudiantes', 'Promedio Notas'])
 
-    # 3. PROCESAMIENTO Y MAPEO
+    # 6. Procesamiento y Mapeo
     df['cod_ense_clean'] = pd.to_numeric(df['cod_ense_clean'], errors='coerce').fillna(0).astype(int)
     df['nomb_ensenianza'] = df['cod_ense_clean'].map(map_ensenianza_full).fillna("Media - Modalidad no registrada")
 
-    # 4. AGRUPACIÓN (KPI)
+    # 7. Agrupación (KPI)
     kpi = df.groupby('nomb_ensenianza').agg({
         'mrun': 'count',
         'prom_notas_media': 'mean'
@@ -830,23 +832,19 @@ def get_tasas_articulacion_tipo_establecimiento_rango(cohorte_range, cod_inst, j
 #print(get_tasas_articulacion_tipo_establecimiento_rango(cohorte_range=[2007,2007], cod_inst=104))
 
 def get_data_geografica_unificada_rango(cohorte_range, cod_inst, jornada="Todas", genero="Todos"):
-    # 1. Manejo de Rango de Cohorte
     if isinstance(cohorte_range, list):
-        c_inicio, c_fin = cohorte_range[0], cohorte_range[1]
-        condicion_cohorte = "BETWEEN :c_inicio AND :c_fin"
+        c_inicio, c_fin = int(cohorte_range[0]), int(cohorte_range[1])
     else:
-        c_inicio, c_fin = cohorte_range, cohorte_range
-        condicion_cohorte = "= :c_inicio"
+        c_inicio, c_fin = int(cohorte_range), int(cohorte_range)
 
     params = {
-        "cod_inst": cod_inst,
+        "cod_inst": int(cod_inst),
         "c_inicio": c_inicio,
         "c_fin": c_fin
     }
 
     sql_query = text(f"""
     WITH PrimerIngresoInstitucion AS (
-        -- Identidad de ingreso: Capturamos jornada y género de la primera matrícula
         SELECT * FROM (
             SELECT 
                 mrun, 
@@ -863,16 +861,20 @@ def get_data_geografica_unificada_rango(cohorte_range, cod_inst, jornada="Todas"
         ) t WHERE rn_ingreso = 1
     ),
     UniversoValido AS (
-        -- Alumnos dentro del rango de cohortes
         SELECT mrun, jornada, genero
         FROM PrimerIngresoInstitucion
-        WHERE anio_ingreso {condicion_cohorte}
+        WHERE anio_ingreso BETWEEN :c_inicio AND :c_fin
     ),
     UltimoEgreso AS (
-        -- Ubicación geográfica del último registro de enseñanza media
         SELECT * FROM (
             SELECT 
-                mrun, cod_region, nomb_region, cod_provincia, cod_comuna, nomb_comuna,
+                mrun, 
+                -- CONVERSIÓN CRÍTICA: De FLOAT (jraby) a INT
+                CAST(cod_region AS INT) as cod_region, 
+                nomb_region, 
+                CAST(cod_provincia AS INT) as cod_provincia, 
+                CAST(cod_comuna AS INT) as cod_comuna, 
+                nomb_comuna,
                 ROW_NUMBER() OVER (PARTITION BY mrun ORDER BY periodo DESC) as rn_e
             FROM tabla_alumnos_egresados_unificada
         ) e_sub WHERE rn_e = 1
@@ -887,25 +889,22 @@ def get_data_geografica_unificada_rango(cohorte_range, cod_inst, jornada="Todas"
     GROUP BY e.cod_region, e.nomb_region, e.cod_provincia, e.cod_comuna, e.nomb_comuna, u.jornada, u.genero
     """)
 
-    df_raw = pd.read_sql(sql_query, db_engine, params=params)
+    with db_engine.connect() as conn:
+        df_raw = pd.read_sql(sql_query, conn, params=params)
 
     if df_raw.empty:
         return pd.DataFrame()
 
-    # 2. FILTROS EN PANDAS (Sobre la identidad de ingreso)
+    # Filtros en Pandas
     df = df_raw.copy()
     if jornada != "Todas":
         df = df[df['jornada'] == jornada]
-    
     if genero != "Todos":
         df = df[df['genero'] == genero]
 
-    # 3. AGRUPACIÓN FINAL
-    resumen = df.groupby(['cod_region', 'nomb_region', 'cod_provincia', 'cod_comuna', 'nomb_comuna'])['cantidad'].sum().reset_index()
-    
-    return resumen
+    return df.groupby(['cod_region', 'nomb_region', 'cod_provincia', 'cod_comuna', 'nomb_comuna'])['cantidad'].sum().reset_index()
 
-#print(get_data_geografica_unificada_rango(cohorte_range=[2007,2025], cod_inst=104))
+print(get_data_geografica_unificada_rango(cohorte_range=[2007,2025], cod_inst=104))
 
 def get_kpi_ruralidad_seguimiento_rango(cohorte_range, cod_inst, jornada="Todas", genero="Todos", region_id=None):
     params = {
@@ -962,21 +961,31 @@ def get_kpi_ruralidad_seguimiento_rango(cohorte_range, cod_inst, jornada="Todas"
 #print(get_kpi_ruralidad_seguimiento_rango(cohorte_range=[2007,2025], cod_inst=104))
 
 def get_info_competencia():
-    sql = text("""
+
+    sql_query = text("""
         WITH CarrerasUnicas AS (
-            SELECT DISTINCT cod_inst, nomb_inst, nomb_carrera
+            -- Convertimos los campos TEXT a VARCHAR para poder usar DISTINCT
+            SELECT DISTINCT 
+                cod_inst, 
+                CAST(nomb_inst AS VARCHAR(500)) as nomb_inst, 
+                CAST(nomb_carrera AS VARCHAR(500)) as nomb_carrera
             FROM tabla_matriculas_competencia_unificada
         )
         SELECT 
-            cod_inst,
-            MAX(nomb_inst) as nomb_inst, 
-            STRING_AGG(nomb_carrera, ', ') WITHIN GROUP (ORDER BY nomb_carrera ASC) as carreras
-        FROM CarrerasUnicas
-        GROUP BY cod_inst
-        ORDER BY nomb_inst ASC
+            c1.cod_inst, 
+            c1.nomb_inst,
+            STUFF((
+                SELECT ', ' + c2.nomb_carrera
+                FROM CarrerasUnicas c2
+                WHERE c2.cod_inst = c1.cod_inst
+                ORDER BY c2.nomb_carrera
+                FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS carreras
+        FROM CarrerasUnicas c1
+        GROUP BY c1.cod_inst, c1.nomb_inst
+        ORDER BY c1.nomb_inst ASC
     """)
-    
-    df = pd.read_sql(sql, db_engine)
+        
+    df = pd.read_sql(sql_query, db_engine)
     return df
 
 def get_jornadas_por_institucion(cod_inst):

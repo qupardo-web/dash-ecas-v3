@@ -218,10 +218,10 @@ def get_distribucion_cambio_jornada_ecas(rango_anios, jornada_filtro=None, gener
 
 #print(get_distribucion_cambio_jornada_ecas(rango_anios=[2007,2025]))
 
-def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos", jornada="Todas", region_sede="region_sede"):
+def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero="Todos", jornada="Todas", region_sede=None):
     # Configuración por defecto de la institución
     if not instituciones:
-        instituciones = ["IP ESCUELA DE CONTADORES AUDITORES DE SANTIAGO"]
+        instituciones = ["IP ESCUELA DE COMERCIO DE SANTIAGO"]
     elif isinstance(instituciones, str):
         instituciones = [instituciones]
 
@@ -231,11 +231,12 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
 
     # 2. Diccionario base de parámetros
     params = {
-        "anio_min": anios_rango[0],
-        "anio_max": anios_rango[1],
+        "anio_min": int(anios_rango[0]),
+        "anio_max": int(anios_rango[1]),
         **inst_params
     }
 
+    # 3. Filtros dinámicos
     filtro_genero = ""
     if genero and genero != "Todos":
         filtro_genero = "AND genero = :genero"
@@ -246,17 +247,15 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         filtro_jornada = "AND jornada = :jornada"
         params["jornada"] = jornada
 
+    filtro_sede = ""
     if region_sede and isinstance(region_sede, list) and len(region_sede) > 0:
         region_keys = [f"reg{i}" for i in range(len(region_sede))]
         for i, val in enumerate(region_sede):
             params[f"reg{i}"] = val
         filtro_sede = f"AND (region_sede IN ({', '.join([':' + k for k in region_keys])}) OR cod_inst = 104)"
-    else:
-        filtro_sede = ""
-        
 
-    # 5. Query SQL con soporte multi-filtro
-    sql_query = f"""
+    # 4. Query SQL compatible con SQL Server 2008
+    sql_query = text(f"""
     WITH base_cohorte AS (
         SELECT nomb_inst, cohorte, COUNT(DISTINCT mrun) as total_inicial
         FROM tabla_matriculas_competencia_unificada
@@ -276,6 +275,7 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
           AND nomb_inst IN ({in_clause})
           {filtro_genero}
           {filtro_jornada}
+          {filtro_sede}
         GROUP BY nomb_inst, cohorte, (periodo - cohorte)
     ),
     titulados_por_anio AS (
@@ -292,10 +292,16 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
         SELECT 
             m.nomb_inst, m.cohorte, m.t_anios,
             (CAST(m.n_matriculados AS FLOAT) / NULLIF(b.total_inicial, 0)) * 100 AS pct_supervivencia,
-            (CAST(SUM(COALESCE(t.n_titulados, 0)) OVER (PARTITION BY m.nomb_inst, m.cohorte ORDER BY m.t_anios) AS FLOAT) / NULLIF(b.total_inicial, 0)) * 100 AS pct_titulacion_acum
+            -- Reemplazo de SUM() OVER(ORDER BY) por Subconsulta Correlacionada para SQL 2008
+            (CAST((
+                SELECT SUM(t2.n_titulados)
+                FROM titulados_por_anio t2
+                WHERE t2.nomb_inst = m.nomb_inst 
+                  AND t2.cohorte = m.cohorte 
+                  AND t2.t_anios <= m.t_anios
+            ) AS FLOAT) / NULLIF(b.total_inicial, 0)) * 100 AS pct_titulacion_acum
         FROM matriculados_por_anio m
         JOIN base_cohorte b ON m.nomb_inst = b.nomb_inst AND m.cohorte = b.cohorte
-        LEFT JOIN titulados_por_anio t ON m.nomb_inst = t.nomb_inst AND m.cohorte = t.cohorte AND m.t_anios = t.t_anios
     )
     SELECT 
         nomb_inst, t_anios,
@@ -304,10 +310,10 @@ def get_supervivencia_vs_titulacion_data(anios_rango, instituciones=None, genero
     FROM calculos_por_cohorte
     GROUP BY nomb_inst, t_anios
     ORDER BY nomb_inst, t_anios
-    """
+    """)
 
     with db_engine.connect() as conn:
-        df = pd.read_sql(text(sql_query), conn, params=params)
+        df = pd.read_sql(sql_query, conn, params=params)
     
     return df
 
@@ -469,16 +475,12 @@ def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
     WITH estudiantes_captados AS (
         SELECT DISTINCT p.mrun, p.genero, p.jornada, p.cohorte
         FROM tabla_matriculas_competencia_unificada p
+
+        INNER JOIN tabla_historial_externo_mrun h ON p.mrun = h.mrun
         WHERE p.cod_inst = 104
           AND p.cohorte BETWEEN :anio_min AND :anio_max
           {filtro_jornada}
           {filtro_genero}
-          AND EXISTS (
-              SELECT 1 FROM matriculas_mrun v
-              WHERE v.mrun = p.mrun 
-                AND v.cat_periodo < p.cohorte 
-                AND v.cod_inst <> 104
-          )
     )
     SELECT 
         COUNT(DISTINCT e.mrun) as total_captados,
@@ -492,8 +494,8 @@ def get_metrica_exito_captacion(rango_anios, jornada="Todas", genero="Todos"):
     LEFT JOIN tabla_dashboard_titulados t ON e.mrun = t.mrun AND t.cod_inst = 104
     """
 
+    # Asegúrate de usar el engine del servidor donde migraste los datos (UMASNET_2)
     df = pd.read_sql(text(sql_query), db_engine, params=params)
-
     return df
 
 #print(get_metrica_exito_captacion(rango_anios=[2007,2025]))

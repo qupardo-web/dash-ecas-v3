@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, Integer, String, Float, BigInteger
 from sqlalchemy import text
 
 # Conexión a la base de datos
-engine = get_db_engine()
+engine = get_db_engine_umasnet()
 
 DTYPE_MAP = {
     'cat_periodo': Integer(),
@@ -69,12 +69,12 @@ DTYPE_TITULADOS = {
     'gen_alu': Integer(),
     'fec_nac_alu': Integer(),
     'rango_edad': String(100),
-    'año_ing_carr_ori': Integer(),
+    'anio_ing_carr_ori': Integer(),
     'sem_ing_carr_ori': Integer(),
-    'año_ing_carr_act': Integer(),
+    'anio_ing_carr_act': Integer(),
     'sem_ing_carr_act': Integer(),
-    'nomb_titulo_obtenido': String(500),
-    'nomb_grado_obtenido': String(500),
+    'nombre_titulo_obtenido': String(500),
+    'nombre_grado_obtenido': String(500),
     'fecha_obtencion_titulo': Integer(),
     'tipo_inst_1': String(100),
     'tipo_inst_2': String(100),
@@ -288,7 +288,87 @@ def cargar_egresados():
         except Exception as e:
             print(f"Error crítico en archivo {archivo}: {e}")
 
+import math
+
+def agregar_archivo_a_tabla(ruta_archivo, nombre_tabla):
+    CONFIG = {
+        'matriculas_mrun': {'dtype': DTYPE_MAP, 'sep': ';'},
+        'titulados_mrun': {'dtype': DTYPE_TITULADOS, 'sep': ';'},
+        'egresados_mrun': {'dtype': DTYPE_EGRESADOS, 'sep': ';'}
+    }
+
+    if nombre_tabla not in CONFIG:
+        print(f"❌ Error: La tabla '{nombre_tabla}' no está configurada.")
+        return
+
+    if not os.path.exists(ruta_archivo):
+        print(f"❌ Error: El archivo '{ruta_archivo}' no existe.")
+        return
+
+    conf = CONFIG[nombre_tabla]
+    columnas_maestras = list(conf['dtype'].keys())
+    nombre_archivo = os.path.basename(ruta_archivo)
+    
+    # 1. Bajamos el tamaño del bloque para SQL 2008 (Seguro y eficiente)
+    TAMANO_BLOQUE = 1000
+
+    try:
+        print(f"\n🚀 Leyendo: {nombre_archivo}")
+        df = pd.read_csv(ruta_archivo, sep=conf['sep'], encoding='utf-8-sig', dtype=str)
+        
+        df.columns = [c.strip().lower().replace('ï»¿', '') for c in df.columns]
+
+        if 'prom_notas_alu' in df.columns:
+            df['prom_notas_alu'] = df['prom_notas_alu'].str.replace(',', '.', regex=False)
+            df['prom_notas_alu'] = pd.to_numeric(df['prom_notas_alu'], errors='coerce')
+       
+       
+        if nombre_tabla == 'egresados_mrun':
+            MAPA_EGRESADOS = {
+                'agno': 'periodo', 'mrun': 'mrun', 'mrun_ipe': 'mascara_provisoria',
+                'rbd': 'rbd', 'cod_reg_rbd': 'cod_region', 'nom_reg_rbd_a': 'nomb_region',
+                'cod_pro_rbd':'cod_provincia','cod_com_rbd': 'cod_comuna','nom_com_rbd':'nomb_comuna',
+                'cod_deprov_rbd':'cod_departamento', 'nom_deprov_rbd': 'nomb_departamento', 'cod_ense': 'cod_ensenianza',
+                'cod_grado': 'cod_grado', 'cod_depe': 'cod_dependencia', 'cod_depe2': 'cod_dep_agrupado',
+                'rural_rbd': 'indice_rural', 'prom_notas_alu': 'prom_notas_alu', 'origen': 'origen_dato',
+                'ense_completa': 'ense_completa', 'marca_egreso': 'marca_egreso' 
+            }
+            pass
+        
+        df = df.reindex(columns=columnas_maestras)
+        df = df.where(pd.notnull(df), None)
+        
+        total_filas = len(df)
+        total_bloques = math.ceil(total_filas / TAMANO_BLOQUE)
+        
+        print(f"📊 Total a cargar: {total_filas} filas en {total_bloques} bloques.")
+
+        # 2. Carga manual por bloques para mostrar progreso
+        for i in range(total_bloques):
+            inicio = i * TAMANO_BLOQUE
+            fin = inicio + TAMANO_BLOQUE
+            chunk = df.iloc[inicio:fin]
+            
+            # Insertar el bloque
+            chunk.to_sql(
+                nombre_tabla,
+                con=engine,
+                if_exists='append',
+                index=False,
+                dtype=conf['dtype']
+            )
+            
+            # 3. Mostrar progreso en la misma línea
+            porcentaje = ((i + 1) / total_bloques) * 100
+            print(f"\r   ⏳ Progreso: [{i+1}/{total_bloques}] - {porcentaje:.1f}% completado", end="")
+
+        print(f"\n✅ ÉXITO: Se cargaron {total_filas} filas en '{nombre_tabla}'.\n")
+
+    except Exception as e:
+        print(f"\n❌ ERROR en {nombre_archivo}: {e}")
+
 #cargar_matriculas_con_mapeo()
 #cargar_titulados_con_mapeo()
 #actualizar_campos_titulados()
-cargar_egresados()
+#cargar_egresados()
+agregar_archivo_a_tabla('/egresados/')

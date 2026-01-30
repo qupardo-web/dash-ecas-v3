@@ -125,13 +125,13 @@ layout = dbc.Container([
                         dbc.CardHeader([
                             html.I(className="fas fa-chart-line me-2"),
                             "Evolución Histórica de Matrícula (Ingresos por Cohorte)"
-                        ], className="fw-bold bg-primary text-white"),
+                        ],style={"background-color": "#162f8a"}, className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Loading(
                                 id="loading-ingresos",
                                 type="circle",
                                 children=dcc.Graph(id='grafico-ingresos-competencia', style={"height": "450px"}),
-                                color="#FF6600" # Naranja ECAS
+                                color="#FF6600" 
                             )
                         ])
                     ], className="shadow-sm mb-4")
@@ -143,7 +143,10 @@ layout = dbc.Container([
                 # Comparativa de Deserción Real
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader("Permanencia N → N+1 (%)", className="fw-bold"),
+                        dbc.CardHeader([
+                            html.I(className="fas fa-thumbs-up me-2"),
+                            "Permanencia N > N+1 (Cohortes de ingreso)"
+                        ], style={"background-color": "#162f8a"}, className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Loading(
                                 type="circle",
@@ -165,7 +168,10 @@ layout = dbc.Container([
                 # Distribución de la Selección
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader("Permanencia por jornada (ECAS)", className="fw-bold"),
+                        dbc.CardHeader([
+                            html.I(className="fas fa-bar-chart me-2"),
+                            "Permanencia por jornada (ECAS)"
+                        ],style={"background-color": "#162f8a"}, className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Loading(
                                 type="circle",
@@ -175,8 +181,8 @@ layout = dbc.Container([
                                         "maxHeight": "350px", 
                                         "width": "100%",
                                         "overflowY": "auto", 
-                                        "overflowX": "hidden",  # Corta cualquier desborde visual
-                                        "padding-bottom": "20px" # Espacio de seguridad
+                                        "overflowX": "hidden", 
+                                        "padding-bottom": "20px" 
                                     }
                                 )
                             )
@@ -191,7 +197,10 @@ layout = dbc.Container([
                     dbc.Card([
                         dbc.CardHeader([
                             dbc.Row([
-                                dbc.Col("Tasas de supervivencia y titulación por cohorte", width=8),
+                                dbc.Col([
+                                    html.I(className="fas fa-graduation-cap me-2"),
+                                    "Tasas de supervivencia y titulación por cohorte"], 
+                                    width=8),
                                 dbc.Col(
                                     dcc.Dropdown(
                                         id='selector-inst-supervivencia',
@@ -202,7 +211,7 @@ layout = dbc.Container([
                                     ), width=4
                                 )
                             ])
-                        ], className="fw-bold"),
+                        ], style={"background-color": "#162f8a"},  className="fw-bold text-white"),
                         dbc.CardBody([
                             dcc.Graph(id='grafico-supervivencia-titulacion')
                         ])
@@ -215,7 +224,10 @@ layout = dbc.Container([
                     dbc.Card([
                         dbc.CardHeader([
                             dbc.Row([
-                                dbc.Col("Análisis de Destino (Fuga)", width=6),
+                                dbc.Col([
+                                    html.I(className="fas fa-map me-2"),
+                                    "Destinos de los desertores luego de ECAS"], 
+                                    width=6),
                                 dbc.Col([
                                     dbc.RadioItems(
                                         id="radio-dimension-fuga",
@@ -229,7 +241,7 @@ layout = dbc.Container([
                                     )
                                 ], width=6, className="text-end")
                             ])
-                        ]),
+                        ], style={"background-color": "#162f8a"},  className="fw-bold text-white"),
                         dbc.CardBody([
                             dbc.Row([
                                 dbc.Col(dcc.Graph(id="pie-fuga-1"), width=4),
@@ -245,9 +257,9 @@ layout = dbc.Container([
                 dbc.Col([
                     dbc.Card([
                         dbc.CardHeader([
-                            html.I(className="fas fa-history me-2"),
+                            html.I(className="fas fa-hourglass-3 me-2"),
                             "Distribución de Tiempo de Descanso (Post-ECAS)"
-                        ], className="fw-bold bg-light"),
+                        ],  style={"background-color": "#162f8a"},  className="fw-bold text-white"),
                         dbc.CardBody([
                             html.P(
                                 "Mide el tiempo transcurrido desde que el alumno abandona ECAS "
@@ -270,15 +282,16 @@ layout = dbc.Container([
             dbc.Row([
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader("Comparativa de Éxito Académico (Trayectorias)", className="fw-bold bg-light"),
+                        dbc.CardHeader([
+                            html.I(className="fas fa-history me-2"),
+                            "Comparativa de Éxito Académico (Trayectorias)"
+                        ], style={"background-color": "#162f8a"}, className="fw-bold text-white"),
                         dbc.CardBody([
                             dbc.Row([
-                                # GAUGE 1: Los que se FUERON de ECAS y se titularon fuera
                                 dbc.Col([
                                     dcc.Loading(dcc.Graph(id='grafico-gauge-titulacion-ext'))
                                 ], width=6, className="border-right"),
                                 
-                                # GAUGE 2: Los que VINIERON de fuera y se titularon en ECAS
                                 dbc.Col([
                                     dcc.Loading(dcc.Graph(id='grafico-gauge-exito-captacion'))
                                 ], width=6),
@@ -294,21 +307,19 @@ layout = dbc.Container([
                 ], width=12)
             ]),
             
-            # Espacio extra al final para mejorar la sensación de scroll
             html.Div(style={"height": "50px"})
 
 
         ], width=9, style=CONTENT_STYLE)
-    ]) # g=0 elimina los gutters para un look más integrado
+    ]) 
 ], fluid=True)
 
 @callback(
     Output('selector-regiones-universo', 'options'),
-    Input('selector-regiones-universo', 'id') # Gatillo de carga inicial
+    Input('selector-regiones-universo', 'id') 
 )
 def poblar_regiones(_):
     regiones = get_regiones_disponibles()
-    # Creamos el formato {label, value} que requiere Dash
     options = [{'label': reg, 'value': reg} for reg in regiones]
     return options
 
@@ -404,7 +415,6 @@ def update_charts_permanencia_e_ingreso(rango_anios, top_n, jornada, genero, ins
         else:
             mask_ecas = df['nomb_inst'].str.upper().str.contains("ESCUELA DE CONTADORES|ECAS", na=False)
             metrica = 'base_n' if is_perm else 'total_ingresos'
-            # Agregamos .sum() en lugar de .mean() si quieres ver el volumen total multiregión
             ranking = df[~mask_ecas].groupby('nomb_inst')[metrica].sum()\
                                     .sort_values(ascending=False).head(top_n).index.tolist()
             return df[df['nomb_inst'].isin(ranking) | mask_ecas].copy()

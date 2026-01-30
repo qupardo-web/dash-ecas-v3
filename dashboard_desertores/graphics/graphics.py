@@ -397,7 +397,7 @@ def create_gauge_titulacion_externa(df_metrica):
         title = {'text': f"Tasa de Éxito Externo<br><span style='font-size:0.8em;color:gray'>{total_tit} Titulados en otras Inst.</span>", 'font': {'size': 18}},
         gauge = {
             'axis': {'range': [0, 100], 'tickwidth': 1},
-            'bar': {'color': "#d6b822"}, 
+            'bar': {'color': "#e67e8c"}, 
             'bgcolor': "white",
             'borderwidth': 2,
             'bordercolor': "gray",
@@ -426,7 +426,7 @@ def create_gauge_exito_captacion(df):
         },
         gauge = {
             'axis': {'range': [0, 100]},
-            'bar': {'color': "#2e65e6"}, # Color oscuro/azul para diferenciar del naranja
+            'bar': {'color': "#2e65e6"}, 
             'steps': [
                 {'range': [0, 50], 'color': '#f8f9fa'},
                 {'range': [50, 100], 'color': '#e9ecef'}

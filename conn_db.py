@@ -1,23 +1,22 @@
 from sqlalchemy import create_engine
 import urllib
 
-SERVER = 'QUPARDO'
-DATABASE1 = 'DBMatriculas'
-DATABASE2 = 'DATOSACADEMICOS'
+SERVER = '192.168.1.194'
+SERVER_PERSONAL = 'QUPARDO'
+USERNAME = 'jraby'
+PASSWORD = '123'
+DATABASE_UMAS = 'umasnet'
+DATABASE_MRUN = 'DATOSACADEMICOS'
+DATABASE = 'DATOSACADEMICOS'
 DRIVER_NAME = 'ODBC Driver 17 for SQL Server' 
 
-SERVER2 = '192.168.1.194'
-USERNAME2 = 'jraby'
-DATABASE3 = 'umasnet'
-PASSWORD2 = '123'
-
-def get_db_engine():
+def get_db_engine_personal():
     """Establece y devuelve el motor de conexión (Engine) a SQL Server usando Autenticación de Windows."""
     try:
         
         DRIVER = urllib.parse.quote_plus(DRIVER_NAME)
         
-        DB_URL = f"mssql+pyodbc://{SERVER}/{DATABASE2}?driver={DRIVER}&trusted_connection=yes"
+        DB_URL = f"mssql+pyodbc://{SERVER_PERSONAL}/{DATABASE}?driver={DRIVER}&trusted_connection=yes"
         
         engine = create_engine(DB_URL, fast_executemany=True)
         
@@ -32,9 +31,9 @@ def get_db_engine():
         print("="*50)
         return None
 
-def get_db_engine_umasnet():
+def get_db_engine():
         connection_string = (
-            f"mssql+pyodbc://{USERNAME2}:{PASSWORD2}@{SERVER2}/{DATABASE3}"
+            f"mssql+pyodbc://{USERNAME}:{PASSWORD}@{SERVER}/{DATABASE_MRUN}"
             "?driver=ODBC+Driver+17+for+SQL+Server"
             "&MultipleActiveResultSets=True"
                 )
@@ -42,3 +41,25 @@ def get_db_engine_umasnet():
         
         with engine.connect():
             return engine
+
+def get_db_engine_umasnet():
+        connection_string = (
+            f"mssql+pyodbc://{USERNAME}:{PASSWORD}@{SERVER}/{DATABASE_UMAS}"
+            "?driver=ODBC+Driver+17+for+SQL+Server"
+            "&MultipleActiveResultSets=True"
+                )
+        engine = create_engine(connection_string)
+        
+        with engine.connect():
+            return engine
+
+# def get_db_engine_umasnet_2():
+#         connection_string = (
+#             f"mssql+pyodbc://{USERNAME2}:{PASSWORD2}@{SERVER_MRUN}/{DATABASE_MRUN}"
+#             "?driver=ODBC+Driver+17+for+SQL+Server"
+#             "&MultipleActiveResultSets=True"
+#                 )
+#         engine = create_engine(connection_string)
+        
+#         with engine.connect():
+#             return engine

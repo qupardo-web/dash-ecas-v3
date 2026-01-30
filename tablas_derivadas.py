@@ -16,7 +16,7 @@ def obtener_año_max_matriculas():
     
     return max_periodo
 
-anio_max_matriculas = obtener_año_max_matriculas()
+#anio_max_matriculas = obtener_año_max_matriculas()
 
 def obtener_año_max_titulados():
 
@@ -27,7 +27,7 @@ def obtener_año_max_titulados():
 
     return max_periodo
 
-anio_max_titulados = obtener_año_max_titulados()
+#anio_max_titulados = obtener_año_max_titulados()
 
 def actualizar_tabla_matriculas():
 
@@ -411,11 +411,95 @@ def actualizar_tabla_trayectoria_titulados():
     except Exception as e:
         print(f"Error al actualizar la tabla: {e}")
 
-# actualizar_tabla_matriculas()
-# actualizar_tabla_egresados()
-# actualizar_tabla_titulados()
-actualizar_tabla_trayectoria_titulados()
+def actualizar_tabla_historial_externo():
+
+    sql_query= text("""
+        IF OBJECT_ID('tabla_historial_externo_mrun', 'U') IS NOT NULL
+            DROP TABLE tabla_historial_externo_mrun;
+
+        -- 2. Creación de la tabla específica
+        WITH PrimerIngresoECAS AS (
+            -- Obtenemos el año mínimo en que cada alumno entró a la 104
+            SELECT mrun, MIN(periodo) as anio_entrada_ecas
+            FROM tabla_matriculas_competencia_unificada
+            WHERE cod_inst = 104
+            GROUP BY mrun
+        )
+        SELECT 
+            v.mrun, 
+            MIN(v.cat_periodo) as primer_periodo_externo
+        INTO tabla_historial_externo_mrun
+        FROM matriculas_mrun v
+        INNER JOIN PrimerIngresoECAS e ON v.mrun = e.mrun
+        WHERE v.cod_inst <> 104              -- Que sea de la competencia
+          AND v.cat_periodo < e.anio_entrada_ecas -- Que haya ocurrido ANTES de ECAS
+        GROUP BY v.mrun;
+
+        -- 3. Índice para performance
+        CREATE INDEX idx_historial_mrun ON tabla_historial_externo_mrun(mrun);"""
+    )
+
+    try:
+        with db_engine.connect() as conn:
+            conn.execute(sql_query)
+            conn.commit()
+            print("Tabla actualizada con los registros de historial externo de alumnos ecas")
+    except Exception as e:
+        print(f"Error al actualizar la tabla: {e}")
+
+
+#actualizar_tabla_trayectoria_titulados()
 # actualizar_tabla_origenes_totales()
 # actualizar_tabla_desertores_ecas()
 # actualizar_tabla_abandono_total_ecas()
 #actualizar_tabla_titulados_desertores()
+#actualizar_tabla_historial_externo()
+
+def sincronizar_tablas_derivadas():
+    engine_origen = get_db_engine_personal()  # El que usas actualmente para procesar
+    engine_destino = get_db_engine() # El nuevo servidor
+    
+    tablas_a_mover = [
+        'tabla_historial_externo_mrun'
+        # 'tabla_alumnos_egresados_unificada',
+        # 'tabla_matriculas_competencia_unificada',
+        # 'tabla_dashboard_titulados'
+        # "tabla_abandono_total_ecas",
+        # "tabla_fuga_detallada_ecas",
+        # "tabla_titulados_externos_desertores",
+        # "tabla_origenes_estudiantes_ecas",
+        # "tabla_trayectoria_post_titulado",
+        # "tabla_historial_externo_mrun"
+    ]
+    
+    print(f"🚀 Iniciando migración de {len(tablas_a_mover)} tablas derivadas...")
+
+    for tabla in tablas_a_mover:
+        try:
+            print(f"--- Procesando: {tabla} ---")
+            
+            df = pd.read_sql(f"SELECT * FROM {tabla}", engine_origen)
+            
+            if df.empty:
+                print(f"⚠️ La tabla {tabla} está vacía en el origen. Saltando...")
+                continue
+            
+            df.to_sql(
+                name=tabla,
+                con=engine_destino,
+                if_exists='replace', 
+                index=False,
+                chunksize=50,
+            )
+            
+            with engine_destino.connect() as conn:        
+                conn.commit()
+
+            print(f"✅ Tabla '{tabla}' migrada exitosamente ({len(df)} filas).")
+
+        except Exception as e:
+            print(f"❌ Error al migrar {tabla}: {e}")
+
+    print("\n🏁 Proceso de sincronización finalizado.")
+
+sincronizar_tablas_derivadas()

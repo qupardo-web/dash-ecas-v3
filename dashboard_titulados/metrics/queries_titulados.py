@@ -313,8 +313,8 @@ def get_continuidad_estudios(rango_anios, jornada="Todas", genero="Todos", rango
 
 def get_trayectorias_titulados_completa(rango_anios, jornada="Todas", genero="Todos", rango_edad="Todos"):
     params = {
-        "anio_min": rango_anios[0],
-        "anio_max": rango_anios[1],
+        "anio_min": int(rango_anios[0]),
+        "anio_max": int(rango_anios[1]),
         "cod_inst_ecas": 104
     }
     
@@ -328,7 +328,7 @@ def get_trayectorias_titulados_completa(rango_anios, jornada="Todas", genero="To
     
     filtro_sql = " ".join(filtros)
 
-    sql_query = f"""
+    sql_query = text(f"""
     WITH UniversoTitulados AS (
         SELECT mrun, anio_titulacion 
         FROM tabla_dashboard_titulados t
@@ -337,122 +337,148 @@ def get_trayectorias_titulados_completa(rango_anios, jornada="Todas", genero="To
           {filtro_sql}
     ),
     TrayectoriasFiltradas AS (
-        -- Primero traemos todos los eventos relevantes
+        -- En 2008, emulamos LAG con una subconsulta para detectar cambios de carrera/inst
         SELECT 
             tp.mrun,
             tp.anio_matricula_post,
             tp.nivel_estudio_post,
-            TRIM(tp.carrera_destino) as carrera_actual,
-            tp.inst_destino as inst_actual,
-            LAG(TRIM(tp.carrera_destino)) OVER (PARTITION BY tp.mrun ORDER BY tp.anio_matricula_post ASC) as carrera_anterior,
-            LAG(tp.inst_destino) OVER (PARTITION BY tp.mrun ORDER BY tp.anio_matricula_post ASC) as inst_anterior
+            LTRIM(RTRIM(tp.carrera_destino)) as carrera_actual,
+            tp.inst_destino as inst_actual
         FROM tabla_trayectoria_post_titulado tp
-        WHERE EXISTS (SELECT 1 FROM UniversoTitulados u WHERE u.mrun = tp.mrun AND tp.anio_matricula_post >= u.anio_titulacion)
-    ),
-    CambiosDeCarrera AS (
-        -- Filtramos para que Pregrado > Pregrado > Pregrado sea solo Pregrado (si es la misma carrera)
-        -- Pero que Pregrado (ECAS) > Pregrado (Otra) sea un cambio.
-        SELECT 
-            mrun,
-            anio_matricula_post,
-            nivel_estudio_post
-        FROM TrayectoriasFiltradas
-        WHERE carrera_anterior IS NULL 
-           OR carrera_actual <> carrera_anterior 
-           OR inst_actual <> inst_anterior
+        INNER JOIN UniversoTitulados u ON tp.mrun = u.mrun
+        WHERE tp.anio_matricula_post >= u.anio_titulacion
+          AND NOT EXISTS (
+              -- Buscamos el registro cronológico inmediatamente anterior
+              SELECT 1 FROM tabla_trayectoria_post_titulado tp2
+              WHERE tp2.mrun = tp.mrun
+                AND tp2.anio_matricula_post < tp.anio_matricula_post
+                AND tp2.anio_matricula_post >= u.anio_titulacion
+                AND LTRIM(RTRIM(tp2.carrera_destino)) = LTRIM(RTRIM(tp.carrera_destino))
+                AND tp2.inst_destino = tp.inst_destino
+          )
     ),
     RutasConcatenadas AS (
+        -- Reemplazo de STRING_AGG por FOR XML PATH
         SELECT 
-            mrun,
-            'Pregrado > ' + STRING_AGG(nivel_estudio_post, ' > ') WITHIN GROUP (ORDER BY anio_matricula_post ASC) as trayectoria
-        FROM (
-            -- Subquery para quitar la primera instancia si es el mismo Pregrado de ECAS
-            -- Esto evita que salga "Pregrado > Pregrado" cuando el primer registro post-título es su último año de ECAS
-            SELECT *,
-                   ROW_NUMBER() OVER(PARTITION BY mrun ORDER BY anio_matricula_post ASC) as rn
-            FROM CambiosDeCarrera
-        ) final
-        -- Si quieres que la ruta SIEMPRE empiece con el Pregrado de ECAS, quitamos el filtro rn > 0
-        -- Si el primer registro en la tabla post-título es la misma carrera de ECAS, lo ignoramos para no duplicar el inicio
-        GROUP BY mrun
+            tf1.mrun,
+            'Pregrado > ' + STUFF((
+                SELECT ' > ' + tf2.nivel_estudio_post
+                FROM TrayectoriasFiltradas tf2
+                WHERE tf2.mrun = tf1.mrun
+                ORDER BY tf2.anio_matricula_post ASC
+                FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 3, '') as trayectoria
+        FROM TrayectoriasFiltradas tf1
+        GROUP BY tf1.mrun
+    ),
+    Agrupado AS (
+        SELECT 
+            COALESCE(r.trayectoria, 'Solo Pregrado (Sin Estudios Posteriores)') as trayectoria,
+            COUNT(DISTINCT u.mrun) as cantidad
+        FROM UniversoTitulados u
+        LEFT JOIN RutasConcatenadas r ON u.mrun = r.mrun
+        GROUP BY COALESCE(r.trayectoria, 'Solo Pregrado (Sin Estudios Posteriores)')
     )
+    -- Resultado final con porcentajes (sin OVER ORDER BY)
     SELECT 
-        ISNULL(r.trayectoria, 'Solo Pregrado (Sin Estudios Posteriores)') as trayectoria,
-        COUNT(DISTINCT u.mrun) as cantidad,
-        CAST(COUNT(DISTINCT u.mrun) AS FLOAT) * 100 / SUM(COUNT(DISTINCT u.mrun)) OVER() as porcentaje
-    FROM UniversoTitulados u
-    LEFT JOIN RutasConcatenadas r ON u.mrun = r.mrun
-    GROUP BY ISNULL(r.trayectoria, 'Solo Pregrado (Sin Estudios Posteriores)')
+        trayectoria,
+        cantidad,
+        (CAST(cantidad AS FLOAT) * 100.0 / NULLIF((SELECT SUM(cantidad) FROM Agrupado), 0)) as porcentaje
+    FROM Agrupado
     ORDER BY cantidad DESC
-    """
+    """)
     
     try:
-        df = pd.read_sql(text(sql_query), db_engine, params=params)
-        return df
+        with db_engine.connect() as conn:
+            df = pd.read_sql(sql_query, conn, params=params)
+            return df
     except Exception as e:
         print(f"Error en trayectorias titulados: {e}")
         return pd.DataFrame()
 
-#print(get_trayectorias_titulados_completa(rango_anios=[2007,2025]))
+print(get_trayectorias_titulados_completa(rango_anios=[2007,2025]))
 
 def get_trayectorias_desertores_completa(rango_anios, jornada="Todas", genero="Todos", rango_edad="Todos"):
     params = {
-        "anio_min": rango_anios[0],
-        "anio_max": rango_anios[1]
+        "anio_min": int(rango_anios[0]),
+        "anio_max": int(rango_anios[1])
     }
     
-    # Filtros dinámicos (se aplican a ambas tablas para que el total sea coherente)
-    filtros_fuga = []
-    filtros_abandono = []
-    
+    # Filtros dinámicos
+    filtros = []
     if jornada != "Todas":
-        filtros_fuga.append("AND jornada_ecas = :jornada")
-        filtros_abandono.append("AND jornada_ecas = :jornada")
+        filtros.append("AND jornada_ecas = :jornada")
         params["jornada"] = jornada
     if genero != "Todos":
-        filtros_fuga.append("AND genero = :genero")
-        filtros_abandono.append("AND genero = :genero")
+        filtros.append("AND genero = :genero")
         params["genero"] = genero
     if rango_edad != "Todos":
-        filtros_fuga.append("AND rango_edad = :rango_edad")
-        filtros_abandono.append("AND rango_edad = :rango_edad")
+        filtros.append("AND rango_edad = :rango_edad")
         params["rango_edad"] = rango_edad
     
-    sql_query = f"""
-    WITH DatosCombinados AS (
-        -- PARTE 1: Rutas de los que se movieron (Fuga)
+    str_filtros = " ".join(filtros)
+    
+    sql_query = text(f"""
+    WITH SeguimientoCambios AS (
+        -- Simulamos LAG: Solo tomamos registros donde el nivel cambió respecto al año anterior
         SELECT 
-            mrun,
-            'Pregrado > ' + STRING_AGG(nivel_estudio_post, ' > ') 
-            WITHIN GROUP (ORDER BY anio_matricula_post ASC) as trayectoria
-        FROM (
-            SELECT mrun, nivel_estudio_post, anio_matricula_post,
-                   LAG(nivel_estudio_post) OVER (PARTITION BY mrun ORDER BY anio_matricula_post ASC) as nivel_ant
-            FROM tabla_fuga_detallada_ecas
-            WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
-            {" ".join(filtros_fuga)}
-        ) s 
-        WHERE nivel_ant IS NULL OR nivel_ant <> nivel_estudio_post
-        GROUP BY mrun
-
+            f1.mrun, 
+            f1.nivel_estudio_post, 
+            f1.anio_matricula_post
+        FROM tabla_fuga_detallada_ecas f1
+        WHERE f1.anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
+        {str_filtros}
+        AND NOT EXISTS (
+            SELECT 1 FROM tabla_fuga_detallada_ecas f2
+            WHERE f2.mrun = f1.mrun 
+              AND f2.anio_matricula_post < f1.anio_matricula_post
+              AND f2.nivel_estudio_post = f1.nivel_estudio_post
+              -- Buscamos si el registro inmediatamente anterior es igual
+              AND NOT EXISTS (
+                  SELECT 1 FROM tabla_fuga_detallada_ecas f3
+                  WHERE f3.mrun = f1.mrun
+                    AND f3.anio_matricula_post < f1.anio_matricula_post
+                    AND f3.anio_matricula_post > f2.anio_matricula_post
+              )
+        )
+    ),
+    TrayectoriasConcat AS (
+        -- Simulamos STRING_AGG usando FOR XML PATH (Compatible con 2008)
+        SELECT 
+            s1.mrun,
+            'Pregrado > ' + STUFF((
+                SELECT ' > ' + s2.nivel_estudio_post
+                FROM SeguimientoCambios s2
+                WHERE s2.mrun = s1.mrun
+                ORDER BY s2.anio_matricula_post ASC
+                FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 3, '') as trayectoria
+        FROM SeguimientoCambios s1
+        GROUP BY s1.mrun
+    ),
+    DatosCombinados AS (
+        SELECT mrun, trayectoria FROM TrayectoriasConcat
         UNION ALL
-
-        SELECT 
-            mrun,
-            'Abandono Total del Sistema' as trayectoria
+        SELECT mrun, 'Abandono Total del Sistema' 
         FROM tabla_abandono_total_ecas
         WHERE anio_ingreso_ecas BETWEEN :anio_min AND :anio_max
-        {" ".join(filtros_abandono)}
+        {str_filtros}
+    ),
+    Agrupado AS (
+        SELECT trayectoria, COUNT(DISTINCT mrun) as cantidad
+        FROM DatosCombinados
+        GROUP BY trayectoria
     )
+    -- Resultado final: Calculamos porcentaje con subconsulta para el Total General
     SELECT 
         trayectoria,
-        COUNT(DISTINCT mrun) as cantidad,
-        CAST(COUNT(DISTINCT mrun) AS FLOAT) * 100 / SUM(COUNT(DISTINCT mrun)) OVER() as porcentaje
-    FROM DatosCombinados
-    GROUP BY trayectoria
+        cantidad,
+        (CAST(cantidad AS FLOAT) * 100.0 / NULLIF((SELECT SUM(cantidad) FROM Agrupado), 0)) as porcentaje
+    FROM Agrupado
     ORDER BY cantidad DESC
-    """
+    """)
     
-    return pd.read_sql(text(sql_query), db_engine, params=params)
+    with db_engine.connect() as conn:
+        df = pd.read_sql(sql_query, conn, params=params)
+    
+    return df
 
 #print(get_trayectorias_desertores_completa(rango_anios=[2007,2025]))
